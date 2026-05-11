@@ -2692,6 +2692,15 @@ Death.Bones.BattlegroundOrArena = 1
 Pet.RankMod.Health = 1
 
 #
+#     Pet.DismissOnMount
+#        Description: Dismiss pets when a player mounts. When disabled, pets remain summoned
+#                     and are stunned until the player dismounts.
+#        Default:     0 - Disabled
+#                     1 - Enabled
+
+Pet.DismissOnMount = 0
+
+#
 ###################################################################################################
 
 ###################################################################################################
@@ -3896,8 +3905,20 @@ Battleground.Warsong.Flags = 3
 Battleground.Arathi.CapturePoints = 1600
 
 #
+#    Battleground.40v40.Reinforcements.Enable
+#        Description: Enable reinforcement counters and reinforcement-based victory in 40v40
+#                     battlegrounds such as Alterac Valley and Isle of Conquest.
+#                     When disabled, reinforcement counters are hidden and do not end the match.
+#                     (It is necessary to restart the server after changing this value)
+#        Default:     0 - Disabled
+#                     1 - Enabled
+
+Battleground.40v40.Reinforcements.Enable = 0
+
+#
 #    Battleground.Alterac.Reinforcements
 #        Description: Set the number of total reinforcements for each teams in Alterac battleground
+#                     Used only when Battleground.40v40.Reinforcements.Enable is enabled.
 #                     (It is necessary to restart the server after changing the Reinforcements value)
 #        Default:     600 (Enabled, WotLK)
 #                     500 (Enabled, MoP)

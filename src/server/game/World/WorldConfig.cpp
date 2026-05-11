@@ -415,6 +415,7 @@ void WorldConfig::BuildConfigCache()
     SetConfigValue<uint32>(CONFIG_BATTLEGROUND_OVERRIDE_LOWLEVELS_MINPLAYERS, "Battleground.Override.LowLevels.MinPlayers", 0);
     SetConfigValue<bool>(CONFIG_BATTLEGROUND_DISABLE_QUEST_SHARE_IN_BG, "Battleground.DisableQuestShareInBG", false);
     SetConfigValue<bool>(CONFIG_BATTLEGROUND_DISABLE_READY_CHECK_IN_BG, "Battleground.DisableReadyCheckInBG", false);
+    SetConfigValue<bool>(CONFIG_BATTLEGROUND_40V40_REINFORCEMENTS, "Battleground.40v40.Reinforcements.Enable", false);
     SetConfigValue<bool>(CONFIG_BATTLEGROUND_CAST_DESERTER, "Battleground.CastDeserter", true);
     SetConfigValue<bool>(CONFIG_BATTLEGROUND_QUEUE_ANNOUNCER_ENABLE, "Battleground.QueueAnnouncer.Enable", false);
     SetConfigValue<uint32>(CONFIG_BATTLEGROUND_QUEUE_ANNOUNCER_LIMIT_MIN_LEVEL, "Battleground.QueueAnnouncer.Limit.MinLevel", 0);
@@ -506,6 +507,7 @@ void WorldConfig::BuildConfigCache()
     SetConfigValue<uint32>(CONFIG_CHANGE_FACTION_MAX_MONEY, "ChangeFaction.MaxMoney", 0);
 
     SetConfigValue<bool>(CONFIG_ALLOWS_RANK_MOD_FOR_PET_HEALTH, "Pet.RankMod.Health", true);
+    SetConfigValue<bool>(CONFIG_PET_DISMISS_ON_MOUNT, "Pet.DismissOnMount", false);
 
     SetConfigValue<bool>(CONFIG_MUNCHING_BLIZZLIKE, "MunchingBlizzlike.Enabled", true);
 

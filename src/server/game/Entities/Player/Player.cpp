@@ -8759,11 +8759,13 @@ void Player::SendInitWorldStates(uint32 zoneId, uint32 areaId)
                     battleground->FillInitialWorldStates(packet);
                 else
                 {
+                    uint32 const showReinforcements = sWorld->getBoolConfig(CONFIG_BATTLEGROUND_40V40_REINFORCEMENTS) ? 1 : 0;
+
                     packet.Worldstates.reserve(18);
-                    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_ALLIANCE_REINFORCEMENT_SET, 1);
-                    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT_SET, 1);
-                    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_ALLIANCE_REINFORCEMENT, 300);
-                    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT, 300);
+                    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_ALLIANCE_REINFORCEMENT_SET, showReinforcements);
+                    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT_SET, showReinforcements);
+                    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_ALLIANCE_REINFORCEMENT, showReinforcements ? 300 : 0);
+                    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT, showReinforcements ? 300 : 0);
                     packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_GATE_FRONT_H_WS_OPEN, 1);
                     packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_GATE_WEST_H_WS_OPEN, 1);
                     packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_GATE_EAST_H_WS_OPEN, 1);

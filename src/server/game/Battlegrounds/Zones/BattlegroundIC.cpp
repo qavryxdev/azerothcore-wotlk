@@ -28,6 +28,14 @@
 #include "WorldPacket.h"
 #include "WorldStatePackets.h"
 
+namespace
+{
+bool IsFortyVsFortyReinforcementsEnabled()
+{
+    return sWorld->getBoolConfig(CONFIG_BATTLEGROUND_40V40_REINFORCEMENTS);
+}
+}
+
 void BattlegroundICScore::BuildObjectivesBlock(WorldPacket& data)
 {
     data << uint32(2); // Objectives Count
@@ -266,9 +274,13 @@ void BattlegroundIC::PostUpdateImpl(uint32 diff)
             if (nodePoint[i].nodeState == NODE_STATE_CONTROLLED_A ||
                     nodePoint[i].nodeState == NODE_STATE_CONTROLLED_H)
             {
-                factionReinforcements[nodePoint[i].faction] += 1;
+                if (IsFortyVsFortyReinforcementsEnabled())
+                {
+                    factionReinforcements[nodePoint[i].faction] += 1;
+                    UpdateWorldState((nodePoint[i].faction == TEAM_ALLIANCE ? WORLD_STATE_BATTLEGROUND_IC_ALLIANCE_REINFORCEMENT : WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT), factionReinforcements[nodePoint[i].faction]);
+                }
+
                 RewardHonorToTeam(RESOURCE_HONOR_AMOUNT, nodePoint[i].faction);
-                UpdateWorldState((nodePoint[i].faction == TEAM_ALLIANCE ? WORLD_STATE_BATTLEGROUND_IC_ALLIANCE_REINFORCEMENT : WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT), factionReinforcements[nodePoint[i].faction]);
             }
         }
         resourceTimer = IC_RESOURCE_TIME;
@@ -384,11 +396,13 @@ bool BattlegroundIC::UpdatePlayerScore(Player* player, uint32 type, uint32 value
 
 void BattlegroundIC::FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& packet)
 {
+    uint32 const showReinforcements = IsFortyVsFortyReinforcementsEnabled() ? 1 : 0;
+
     packet.Worldstates.reserve(4+MAX_FORTRESS_GATES_SPAWNS+MAX_NODE_TYPES+1);
-    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_ALLIANCE_REINFORCEMENT_SET, 1);
-    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT_SET, 1);
-    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_ALLIANCE_REINFORCEMENT, factionReinforcements[TEAM_ALLIANCE]);
-    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT, factionReinforcements[TEAM_HORDE]);
+    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_ALLIANCE_REINFORCEMENT_SET, showReinforcements);
+    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT_SET, showReinforcements);
+    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_ALLIANCE_REINFORCEMENT, showReinforcements ? factionReinforcements[TEAM_ALLIANCE] : 0);
+    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT, showReinforcements ? factionReinforcements[TEAM_HORDE] : 0);
 
     for (uint8 i = 0; i < MAX_FORTRESS_GATES_SPAWNS; ++i)
     {
@@ -399,7 +413,7 @@ void BattlegroundIC::FillInitialWorldStates(WorldPackets::WorldState::InitWorldS
     for (uint8 i = 0; i < MAX_NODE_TYPES; ++i)
         packet.Worldstates.emplace_back(nodePoint[i].worldStates[nodePoint[i].nodeState], 1);
 
-    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT_SET, 1);
+    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_IC_HORDE_REINFORCEMENT_SET, showReinforcements);
 }
 
 bool BattlegroundIC::SetupBattleground()
@@ -542,6 +556,9 @@ void BattlegroundIC::HandleKillPlayer(Player* player, Player* killer)
         return;
 
     Battleground::HandleKillPlayer(player, killer);
+
+    if (!IsFortyVsFortyReinforcementsEnabled())
+        return;
 
     factionReinforcements[player->GetTeamId()] -= 1;
 

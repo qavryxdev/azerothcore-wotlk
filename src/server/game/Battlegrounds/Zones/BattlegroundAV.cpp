@@ -275,7 +275,7 @@ void BattlegroundAV::HandleQuestComplete(uint32 questid, Player* player)
 
 void BattlegroundAV::UpdateScore(TeamId teamId, int16 points)
 {
-    if (BG_AV_SCORE_INITIAL_POINTS == 0)
+    if (!BG_AV_REINFORCEMENTS_ENABLED)
         return; // don't update teamscores if reinforcements are disabled
 
     //note: to remove reinforcementpoints points must be negative, for adding reinforcements points must be positive
@@ -487,11 +487,9 @@ void BattlegroundAV::StartingEventOpenDoors()
     for (uint8 mine = AV_NORTH_MINE; mine <= AV_SOUTH_MINE; mine++) //mine population
         ChangeMineOwner(mine, TEAM_NEUTRAL, true);
 
-    if (BG_AV_SCORE_INITIAL_POINTS > 0) // display teamscores on top only if reinforcements are enabled
-    {
-        UpdateWorldState(WORLD_STATE_BATTLEGROUND_AV_SHOW_HORDE_SCORE, 1);
-        UpdateWorldState(WORLD_STATE_BATTLEGROUND_AV_SHOW_ALLIANCE_SCORE, 1);
-    }
+    // Display team scores on top only if reinforcements are enabled.
+    UpdateWorldState(WORLD_STATE_BATTLEGROUND_AV_SHOW_HORDE_SCORE, BG_AV_REINFORCEMENTS_ENABLED ? 1 : 0);
+    UpdateWorldState(WORLD_STATE_BATTLEGROUND_AV_SHOW_ALLIANCE_SCORE, BG_AV_REINFORCEMENTS_ENABLED ? 1 : 0);
 
     DoorOpen(BG_AV_OBJECT_DOOR_H);
     DoorOpen(BG_AV_OBJECT_DOOR_A);
@@ -1153,8 +1151,8 @@ void BattlegroundAV::FillInitialWorldStates(WorldPackets::WorldState::InitWorldS
     packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_AV_ALLIANCE_SCORE, m_Team_Scores[0]);
     packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_AV_HORDE_SCORE, m_Team_Scores[1]);
 
-    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_AV_SHOW_ALLIANCE_SCORE, GetStatus() == STATUS_IN_PROGRESS && BG_AV_SCORE_INITIAL_POINTS > 0 ? 1 : 0);
-    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_AV_SHOW_HORDE_SCORE, GetStatus() == STATUS_IN_PROGRESS && BG_AV_SCORE_INITIAL_POINTS > 0 ? 1 : 0);
+    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_AV_SHOW_ALLIANCE_SCORE, GetStatus() == STATUS_IN_PROGRESS && BG_AV_REINFORCEMENTS_ENABLED ? 1 : 0);
+    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_AV_SHOW_HORDE_SCORE, GetStatus() == STATUS_IN_PROGRESS && BG_AV_REINFORCEMENTS_ENABLED ? 1 : 0);
 
     SendMineWorldStates(AV_NORTH_MINE);
     SendMineWorldStates(AV_SOUTH_MINE);
@@ -1821,7 +1819,7 @@ void BattlegroundAV::ResetBGSubclass()
     {
         for (uint8 j = 0; j < 9; j++)
             m_Team_QuestStatus[i][j] = 0;
-        m_Team_Scores[i] = BG_AV_SCORE_INITIAL_POINTS;
+        m_Team_Scores[i] = BG_AV_REINFORCEMENTS_ENABLED ? BG_AV_SCORE_INITIAL_POINTS : 0;
         m_IsInformedNearVictory[i] = false;
         m_CaptainAlive[i] = true;
         m_CaptainBuffTimer[i] = 120000 + urand(0, 4) * 60; //as far as i could see, the buff is randomly so i make 2minutes (thats the duration of the buff itself) + 0-4minutes TODO get the right times

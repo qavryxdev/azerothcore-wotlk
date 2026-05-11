@@ -26,6 +26,7 @@
 #define BG_AV_SNOWFALL_FIRSTCAP         300000  //5:00 but i also have seen 4:05
 
 #define BG_AV_SCORE_INITIAL_POINTS      (sWorld->getIntConfig(CONFIG_BATTLEGROUND_ALTERAC_REINFORCEMENTS)) // Blizzlike default is 600
+#define BG_AV_REINFORCEMENTS_ENABLED    (sWorld->getBoolConfig(CONFIG_BATTLEGROUND_40V40_REINFORCEMENTS) && BG_AV_SCORE_INITIAL_POINTS > 0)
 #define SEND_MSG_NEAR_LOSE              120
 
 #define BG_AV_KILL_BOSS                 4

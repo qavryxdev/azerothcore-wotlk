@@ -21,11 +21,13 @@
 #include "Log.h"
 #include "MoveSplineInit.h"
 #include "ObjectMgr.h"
+#include "Pet.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "TemporarySummon.h"
 #include "Unit.h"
 #include "Util.h"
+#include "World.h"
 #include <algorithm>
 
 Vehicle::Vehicle(Unit* unit, VehicleEntry const* vehInfo, uint32 creatureEntry) :
@@ -390,7 +392,15 @@ bool Vehicle::AddPassenger(Unit* unit, int8 seatId)
 
     // Xinef: moved from unit.cpp, if aura passes seatId == -1 (choose automaticly) we wont get appropriate flags
     if (unit->IsPlayer() && !(seat->second.SeatInfo->m_flagsB & VEHICLE_SEAT_FLAG_B_KEEP_PET))
-        unit->ToPlayer()->UnsummonPetTemporaryIfAny();
+    {
+        if (Pet* pet = unit->ToPlayer()->GetPet())
+        {
+            if (sWorld->getBoolConfig(CONFIG_PET_DISMISS_ON_MOUNT))
+                unit->ToPlayer()->UnsummonPetTemporaryIfAny();
+            else
+                pet->SetUnitFlag(UNIT_FLAG_STUNNED);
+        }
+    }
 
     if (seat->second.SeatInfo->m_flags & VEHICLE_SEAT_FLAG_PASSENGER_NOT_SELECTABLE)
         unit->SetUnitFlag(UNIT_FLAG_NOT_SELECTABLE);

@@ -53,6 +53,9 @@ INSTALLER_PULL_FROM=
 #  CCOMPILERC="/usr/bin/gcc"
 #  CCOMPILERCXX="/usr/bin/g++"
 #
+#CCOMPILERC="/usr/bin/gcc"
+#CCOMPILERCXX="/usr/bin/g++"
+
 CCOMPILERC="/usr/bin/clang"
 CCOMPILERCXX="/usr/bin/clang++"
 
@@ -69,6 +72,7 @@ CDEBUG=OFF
 #    debugger and have address to source-file:line-number translation).
 # * RelWithDebInfo: optimized, *with* debug info, but no debug (output) code or asserts.
 # * MinSizeRel: same as Release but optimizing for size rather than speed.
+#CTYPE=${CTYPE:-Release}
 CTYPE=${CTYPE:-Release}
 
 # compile scripts
@@ -81,8 +85,8 @@ CMODULES=${CMODULES:-static}
 CBUILD_TESTING=OFF
 
 # use precompiled headers ( fatest compilation but not optimized if you change headers often )
-CSCRIPTPCH=${CSCRIPTPCH:-ON}
-CCOREPCH=${CCOREPCH:-ON}
+CSCRIPTPCH=${CSCRIPTPCH:-OFF}
+CCOREPCH=${CCOREPCH:-OFF}
 
 # build apps list variable
 CAPPS_BUILD=${CAPPS_BUILD:-all}
@@ -100,7 +104,19 @@ CBUILD_TOOLS_LIST=${CBUILD_TOOLS_LIST:-''}
 # you can add your custom definitions here ( -D )
 # example:  CCUSTOMOPTIONS=" -DWITH_PERFTOOLS=ON
 #
-CCUSTOMOPTIONS=${CCUSTOMOPTIONS:-''}
+#CCUSTOMOPTIONS=${CCUSTOMOPTIONS:-DWITH_PERFTOOLS=ON}
+#CCUSTOMOPTIONS=${CCUSTOMOPTIONS:-DNOJEM=ON}
+#CCUSTOMOPTIONS=${CCUSTOMOPTIONS:-DWITH_DYNAMIC_LINKING=0}
+#CCUSTOMOPTIONS="-DWITH_PERFTOOLS=ON"
+#CCUSTOMOPTIONS="-DNOJEM=ON" 
+#CCUSTOMOPTIONS="-DWITH_DYNAMIC_LINKING=0"
+#CCUSTOMOPTIONS=${CCUSTOMOPTIONS:-''}
+CCUSTOMOPTIONS=" -DWITH_PERFTOOLS=ON"
+CCUSTOMOPTIONS=" -DNOJEM=ON"
+CCUSTOMOPTIONS=" -DWITH_DYNAMIC_LINKING=0"
+
+
+
 
 # Enable ccache to speedup
 # recompilations
@@ -155,12 +171,17 @@ export CPUPROFILE=${CPUPROFILE:-"$BINPATH/logs/worldserver-cpu.prof"}
 export CPUPROFILESIGNAL=${CPUPROFILESIGNAL:-12}
 
 # How many interrupts/second the cpu-profiler samples.
-#export CPUPROFILE_FREQUENCY=${CPUPROFILESIGNAL:-100}
+
+#### UPRAVENO - ZAPNUTO
+
+export CPUPROFILE_FREQUENCY=${CPUPROFILESIGNAL:-100}
 
 # If set to any value (including 0 or the empty string), use ITIMER_REAL instead of ITIMER_PROF to gather profiles.
 # In general, ITIMER_REAL is not as accurate as ITIMER_PROF, and also interacts badly with use of alarm(),
 # so prefer ITIMER_PROF unless you have a reason prefer ITIMER_REAL.
-#export CPUPROFILE_REALTIME=${CPUPROFILE_REALTIME}
+
+#### UPRAVENO - ZAPNUTO
+export CPUPROFILE_REALTIME=${CPUPROFILE_REALTIME}
 
 # Other values for HEAPCHECK: minimal, normal (equivalent to "1"), strict, draconian
 #export HEAPCHECK=${HEAPCHECK:-normal}

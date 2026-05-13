@@ -1002,26 +1002,52 @@ namespace Acore
     class AnyGroupedUnitInObjectRangeCheck
     {
     public:
-        AnyGroupedUnitInObjectRangeCheck(WorldObject const* obj, Unit const* funit, float range, bool raid) : _source(obj), _refUnit(funit), _range(range), _raid(raid) {}
+        AnyGroupedUnitInObjectRangeCheck(WorldObject const* obj, Unit const* funit, float range, bool raid)
+            : _source(obj), _refUnit(funit), _refOwner(funit->GetCharmerOrOwnerOrSelf()),
+              _refPlayer(_refOwner && _refOwner->IsPlayer() ? _refOwner->ToPlayer() : nullptr),
+              _refGroup(_refPlayer ? _refPlayer->GetGroup() : nullptr),
+              _refSubGroup(_refPlayer ? _refPlayer->GetSubGroup() : 0), _range(range), _raid(raid)
+        {
+        }
+
         bool operator()(Unit* u)
         {
             if (u->IsVehicle())
                 return false;
 
-            if (_raid)
-            {
-                if (!_refUnit->IsInRaidWith(u))
-                    return false;
-            }
-            else if (!_refUnit->IsInPartyWith(u))
+            if (!IsGroupedWith(u))
                 return false;
 
             return !_refUnit->IsHostileTo(u) && u->IsAlive() && _source->IsWithinDistInMap(u, _range);
         }
 
     private:
+        bool IsGroupedWith(Unit const* u) const
+        {
+            Unit const* owner = u->GetCharmerOrOwnerOrSelf();
+            if (owner == _refOwner)
+                return true;
+
+            if (_refPlayer && owner && owner->IsPlayer())
+            {
+                Player const* player = owner->ToPlayer();
+                Group const* group = player->GetGroup();
+
+                if (_raid)
+                    return _refGroup && group == _refGroup;
+
+                return _refGroup && group == _refGroup && player->GetSubGroup() == _refSubGroup;
+            }
+
+            return _raid ? _refUnit->IsInRaidWith(u) : _refUnit->IsInPartyWith(u);
+        }
+
         WorldObject const* _source;
         Unit const* _refUnit;
+        Unit const* _refOwner;
+        Player const* _refPlayer;
+        Group const* _refGroup;
+        uint8 _refSubGroup;
         float _range;
         bool _raid;
     };

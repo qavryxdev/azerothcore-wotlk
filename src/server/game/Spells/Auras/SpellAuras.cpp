@@ -34,6 +34,7 @@
 #include "Util.h"
 #include "Vehicle.h"
 #include "WorldPacket.h"
+#include "WorldSession.h"
 
 /// @todo: this import is not necessary for compilation and marked as unused by the IDE
 //  however, for some reasons removing it would cause a damn linking issue
@@ -43,6 +44,15 @@
 
 // update aura target map every 500 ms instead of every update - reduce amount of grid searcher calls
 static constexpr int32 UPDATE_TARGET_MAP_INTERVAL = 500;
+static constexpr int32 BOT_UPDATE_TARGET_MAP_INTERVAL = 1000;
+
+static bool IsBotControlledUnit(Unit const* unit)
+{
+    Unit const* owner = unit ? unit->GetCharmerOrOwnerOrSelf() : nullptr;
+    Player const* player = owner && owner->IsPlayer() ? owner->ToPlayer() : nullptr;
+
+    return player && player->GetSession() && player->GetSession()->IsBot();
+}
 
 AuraApplication::AuraApplication(Unit* target, Unit* caster, Aura* aura, uint8 effMask):
     _target(target), _base(aura), _removeMode(AURA_REMOVE_NONE), _slot(MAX_AURAS),
@@ -529,7 +539,9 @@ void Aura::UpdateTargetMap(Unit* caster, bool apply)
     if (IsRemoved())
         return;
 
-    m_updateTargetMapInterval = UPDATE_TARGET_MAP_INTERVAL;
+    m_updateTargetMapInterval = IsBotControlledUnit(m_owner ? m_owner->ToUnit() : nullptr)
+        ? BOT_UPDATE_TARGET_MAP_INTERVAL
+        : UPDATE_TARGET_MAP_INTERVAL;
 
     // fill up to date target list
     //       target, effMask

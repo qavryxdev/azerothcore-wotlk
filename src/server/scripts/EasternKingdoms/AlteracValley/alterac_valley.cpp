@@ -17,6 +17,8 @@
 
 #include "BattlegroundAV.h"
 #include "CreatureScript.h"
+#include "Map.h"
+#include "Player.h"
 #include "ScriptedCreature.h"
 
 enum Spells
@@ -26,6 +28,7 @@ enum Spells
     SPELL_DEMORALIZING_SHOUT                      = 23511,
     SPELL_ENRAGE                                  = 8599,
     SPELL_WHIRLWIND                               = 13736,
+    SPELL_BOWMAN_SHOOT                            = 22121,
 
     SPELL_NORTH_MARSHAL                           = 45828,
     SPELL_SOUTH_MARSHAL                           = 45829,
@@ -56,8 +59,14 @@ enum Events
     EVENT_DEMORALIZING_SHOUT   = 3,
     EVENT_WHIRLWIND            = 4,
     EVENT_ENRAGE               = 5,
-    EVENT_CHECK_RESET          = 6
+    EVENT_CHECK_RESET          = 6,
+
+    EVENT_BOWMAN_ACQUIRE       = 100,
+    EVENT_BOWMAN_SHOOT         = 101,
+    EVENT_BOWMAN_READY         = 102
 };
+
+constexpr float BOWMAN_SHOOT_RANGE = 80.0f;
 
 struct SpellPair
 {
@@ -234,7 +243,200 @@ public:
     }
 };
 
+class npc_av_tower_bowman : public CreatureScript
+{
+public:
+    npc_av_tower_bowman() : CreatureScript("npc_av_tower_bowman") { }
+
+    struct npc_av_tower_bowmanAI : public ScriptedAI
+    {
+        npc_av_tower_bowmanAI(Creature* creature) : ScriptedAI(creature) { }
+
+        void Reset() override
+        {
+            events.Reset();
+            PrepareForRangedStand();
+
+            events.ScheduleEvent(EVENT_BOWMAN_ACQUIRE, 500ms);
+            events.ScheduleEvent(EVENT_BOWMAN_READY, 1s);
+        }
+
+        void JustRespawned() override
+        {
+            Reset();
+        }
+
+        void AttackStart(Unit* target) override
+        {
+            if (CanShoot(target))
+                StartRangedAttack(target);
+        }
+
+        void MoveInLineOfSight(Unit* who) override
+        {
+            if (!me->GetVictim() && CanShoot(who))
+                StartRangedAttack(who);
+        }
+
+        void EnterEvadeMode(EvadeReason why = EVADE_REASON_OTHER) override
+        {
+            ScriptedAI::EnterEvadeMode(why);
+            PrepareForRangedStand();
+        }
+
+        void UpdateAI(uint32 diff) override
+        {
+            events.Update(diff);
+
+            while (uint32 eventId = events.ExecuteEvent())
+            {
+                switch (eventId)
+                {
+                    case EVENT_BOWMAN_ACQUIRE:
+                        if (!GetValidVictim())
+                        {
+                            if (Unit* target = SelectBowmanTarget())
+                                StartRangedAttack(target);
+                            else
+                                StopRangedAttack();
+                        }
+
+                        events.ScheduleEvent(EVENT_BOWMAN_ACQUIRE, 750ms);
+                        break;
+                    case EVENT_BOWMAN_SHOOT:
+                        if (Unit* target = GetValidVictimOrNewTarget())
+                            ShootTarget(target);
+
+                        events.ScheduleEvent(EVENT_BOWMAN_SHOOT, 2300ms, 3200ms);
+                        break;
+                    case EVENT_BOWMAN_READY:
+                        PrepareForRangedStand(false);
+                        events.ScheduleEvent(EVENT_BOWMAN_READY, 1s);
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+
+    private:
+        void PrepareForRangedStand(bool loadEquipment = true)
+        {
+            me->SetUnitFlag(UNIT_FLAG_DISABLE_MOVE);
+            me->SetCombatMovement(false);
+            me->SetReactState(REACT_AGGRESSIVE);
+            me->SetSheath(SHEATH_STATE_RANGED);
+
+            if (loadEquipment)
+                me->LoadEquipment(1, true);
+
+            me->GetMotionMaster()->MoveIdle();
+        }
+
+        bool CanShoot(Unit* target) const
+        {
+            if (!target || target == me || !target->IsAlive())
+                return false;
+
+            if (!me->IsInMap(target) || !me->InSamePhase(target))
+                return false;
+
+            if (!me->IsValidAttackTarget(target))
+                return false;
+
+            if (!me->IsWithinDistInMap(target, BOWMAN_SHOOT_RANGE, true, false, false))
+                return false;
+
+            if (!me->IsWithinLOSInMap(target))
+                return false;
+
+            return true;
+        }
+
+        Unit* GetValidVictim()
+        {
+            Unit* victim = me->GetVictim();
+            if (CanShoot(victim))
+                return victim;
+
+            return nullptr;
+        }
+
+        Unit* GetValidVictimOrNewTarget()
+        {
+            if (Unit* victim = GetValidVictim())
+                return victim;
+
+            StopRangedAttack();
+            if (Unit* target = SelectBowmanTarget())
+            {
+                StartRangedAttack(target);
+                return target;
+            }
+
+            return nullptr;
+        }
+
+        Unit* SelectBowmanTarget()
+        {
+            Player* bestTarget = nullptr;
+            float bestDistance = BOWMAN_SHOOT_RANGE;
+
+            Map::PlayerList const& players = me->GetMap()->GetPlayers();
+            for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
+            {
+                Player* player = itr->GetSource();
+                if (!CanShoot(player))
+                    continue;
+
+                float const distance = me->GetDistance(player);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestTarget = player;
+                }
+            }
+
+            return bestTarget;
+        }
+
+        void StartRangedAttack(Unit* target)
+        {
+            PrepareForRangedStand(false);
+
+            if (me->Attack(target, false))
+                DoAddThreat(target, 1.0f);
+
+            me->SetFacingToObject(target);
+            events.RescheduleEvent(EVENT_BOWMAN_SHOOT, 100ms, 500ms);
+        }
+
+        void StopRangedAttack()
+        {
+            me->AttackStop();
+            me->GetThreatMgr().ClearAllThreat();
+            PrepareForRangedStand(false);
+        }
+
+        void ShootTarget(Unit* target)
+        {
+            PrepareForRangedStand(false);
+            me->SetFacingToObject(target);
+            DoCast(target, SPELL_BOWMAN_SHOOT);
+            me->SetSheath(SHEATH_STATE_RANGED);
+        }
+
+        EventMap events;
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return new npc_av_tower_bowmanAI(creature);
+    }
+};
+
 void AddSC_alterac_valley()
 {
     new npc_av_marshal_or_warmaster();
+    new npc_av_tower_bowman();
 }

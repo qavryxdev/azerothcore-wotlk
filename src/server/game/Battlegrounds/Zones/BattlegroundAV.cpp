@@ -421,6 +421,7 @@ void BattlegroundAV::PostUpdateImpl(uint32 diff)
                 if (i == 0)
                 {
                     CastSpellOnTeam(AV_BUFF_A_CAPTAIN, TEAM_ALLIANCE);
+                    PlaySoundToAll(AV_SOUND_BALINDA_CAPTAIN_BUFF);
                     Creature* creature = GetBGCreature(AV_CPLACE_MAX + 61);
                     if (creature)
                     {
@@ -431,6 +432,7 @@ void BattlegroundAV::PostUpdateImpl(uint32 diff)
                 else
                 {
                     CastSpellOnTeam(AV_BUFF_H_CAPTAIN, TEAM_HORDE);
+                    PlaySoundToAll(AV_SOUND_GALVANGAR_CAPTAIN_BUFF);
                     Creature* creature = GetBGCreature(AV_CPLACE_MAX + 59); //TODO: make the captains a dynamic creature
                     if (creature)
                     {

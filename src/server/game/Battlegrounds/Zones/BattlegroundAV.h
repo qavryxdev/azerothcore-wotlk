@@ -99,7 +99,9 @@ enum BG_AV_Sounds
     AV_SOUND_BOTH_TOWER_DEFEND              = 8192,
 
     AV_SOUND_ALLIANCE_CAPTAIN               = 8232, //gets called when someone attacks them and at the beginning after 3min+rand(x)*10sec (maybe buff)
-    AV_SOUND_HORDE_CAPTAIN                  = 8333
+    AV_SOUND_HORDE_CAPTAIN                  = 8333,
+    AV_SOUND_BALINDA_CAPTAIN_BUFF           = 2682, // Sound\Character\Human\HumanVocalFemale\HumanFemaleCharge01.wav
+    AV_SOUND_GALVANGAR_CAPTAIN_BUFF         = 2694  // Sound\Character\Orc\OrcVocalMale\OrcMaleCharge02.wav
 };
 
 enum BG_AV_OTHER_VALUES

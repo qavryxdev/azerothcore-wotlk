@@ -25,6 +25,7 @@ enum Spells
     SPELL_CONE_OF_COLD                            = 38384,
     SPELL_FIREBALL                                = 46988,
     SPELL_FROSTBOLT                               = 46987,
+    SPELL_WATER_BOLT                              = 46983,
     SPELL_SUMMON_WATER_ELEMENTAL                  = 45067,
     SPELL_ICEBLOCK                                = 46604
 };
@@ -40,6 +41,35 @@ enum Creatures
 {
     NPC_WATER_ELEMENTAL                           = 25040
 };
+
+namespace
+{
+    constexpr uint32 BALINDA_ELEMENTAL_HEALTH = 180000;
+    constexpr uint32 BALINDA_ELEMENTAL_WATER_BOLT_MIN_DAMAGE = 850;
+    constexpr uint32 BALINDA_ELEMENTAL_WATER_BOLT_MAX_DAMAGE = 1050;
+    constexpr float BALINDA_ELEMENTAL_WATER_BOLT_RANGE = 45.0f;
+    constexpr uint32 BALINDA_ELEMENTAL_MELEE_MIN_DAMAGE = 500;
+    constexpr uint32 BALINDA_ELEMENTAL_MELEE_MAX_DAMAGE = 700;
+    constexpr uint32 BALINDA_ELEMENTAL_ATTACK_TIME = 2000;
+
+    void ApplyCrowdControlImmunities(Creature* creature)
+    {
+        for (uint32 mechanic = MECHANIC_CHARM; mechanic < MAX_MECHANIC; ++mechanic)
+            if (IMMUNE_TO_MOVEMENT_IMPAIRMENT_AND_LOSS_CONTROL_MASK & (1ULL << mechanic))
+                creature->ApplySpellImmune(0, IMMUNITY_MECHANIC, mechanic, true);
+    }
+
+    void ConfigureWaterElementalCombatStats(Creature* elemental)
+    {
+        elemental->SetMaxHealth(BALINDA_ELEMENTAL_HEALTH);
+        elemental->SetHealth(BALINDA_ELEMENTAL_HEALTH);
+        elemental->SetBaseWeaponDamage(BASE_ATTACK, MINDAMAGE, static_cast<float>(BALINDA_ELEMENTAL_MELEE_MIN_DAMAGE));
+        elemental->SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, static_cast<float>(BALINDA_ELEMENTAL_MELEE_MAX_DAMAGE));
+        elemental->SetAttackTime(BASE_ATTACK, BALINDA_ELEMENTAL_ATTACK_TIME);
+        elemental->UpdateDamagePhysical(BASE_ATTACK);
+        elemental->SetReactState(REACT_AGGRESSIVE);
+    }
+}
 
 struct boss_balinda : public ScriptedAI
 {
@@ -162,13 +192,6 @@ private:
         creature->ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_CASTING_SPEED_NOT_STACK, true);
     }
 
-    static void ApplyCrowdControlImmunities(Creature* creature)
-    {
-        for (uint32 mechanic = MECHANIC_CHARM; mechanic < MAX_MECHANIC; ++mechanic)
-            if (IMMUNE_TO_MOVEMENT_IMPAIRMENT_AND_LOSS_CONTROL_MASK & (1ULL << mechanic))
-                creature->ApplySpellImmune(0, IMMUNITY_MECHANIC, mechanic, true);
-    }
-
     template <typename Action>
     void CastIfReady(Action&& action)
     {
@@ -210,6 +233,7 @@ private:
     {
         elemental->SetLevel(me->GetLevel());
         elemental->SetFaction(me->GetFaction());
+        ConfigureWaterElementalCombatStats(elemental);
         ApplyCrowdControlImmunities(elemental);
 
         if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 50, true))
@@ -220,7 +244,79 @@ private:
     uint8 _iceBlockCount;
 };
 
+struct npc_balinda_greater_water_elemental : public ScriptedAI
+{
+    npc_balinda_greater_water_elemental(Creature* creature) : ScriptedAI(creature)
+    {
+        ConfigureWaterElemental();
+    }
+
+    void Reset() override
+    {
+        scheduler.CancelAll();
+        ConfigureWaterElemental();
+    }
+
+    void JustEngagedWith(Unit* /*who*/) override
+    {
+        scheduler.CancelAll();
+
+        ScheduleTimedEvent(1s, [&]
+        {
+            CastWaterBolt();
+        }, 1s, 2s);
+    }
+
+    void DamageDealt(Unit* /*victim*/, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+    {
+        if (damageType == SPELL_DIRECT_DAMAGE && (damageSchoolMask & SPELL_SCHOOL_MASK_FROST))
+            damage = urand(BALINDA_ELEMENTAL_WATER_BOLT_MIN_DAMAGE, BALINDA_ELEMENTAL_WATER_BOLT_MAX_DAMAGE);
+    }
+
+    void UpdateAI(uint32 diff) override
+    {
+        if (!UpdateVictim())
+            return;
+
+        scheduler.Update(diff,
+            std::bind(&ScriptedAI::DoMeleeAttackIfReady, this));
+    }
+
+private:
+    void ConfigureWaterElemental()
+    {
+        ConfigureWaterElementalCombatStats(me);
+        ApplyCrowdControlImmunities(me);
+    }
+
+    void CastWaterBolt()
+    {
+        if (me->HasUnitState(UNIT_STATE_CASTING))
+            return;
+
+        if (Unit* target = SelectWaterBoltTarget())
+            DoCast(target, SPELL_WATER_BOLT);
+    }
+
+    Unit* SelectWaterBoltTarget()
+    {
+        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, [&](Unit* target)
+        {
+            return target && target->IsPlayer() && target->getPowerType() == POWER_MANA &&
+                me->IsWithinCombatRange(target, BALINDA_ELEMENTAL_WATER_BOLT_RANGE) &&
+                me->IsWithinLOSInMap(target);
+        }))
+            return target;
+
+        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, RangeSelector(me, BALINDA_ELEMENTAL_WATER_BOLT_RANGE, true, true, 8.0f)))
+            return target;
+
+        return SelectTarget(SelectTargetMethod::Random, 0, BALINDA_ELEMENTAL_WATER_BOLT_RANGE, true);
+    }
+};
+
 void AddSC_boss_balinda()
 {
     RegisterCreatureAI(boss_balinda);
+    RegisterCreatureAI(npc_balinda_greater_water_elemental);
 }

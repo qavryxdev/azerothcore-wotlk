@@ -17,6 +17,7 @@
 
 #include "CreatureScript.h"
 #include "ScriptedCreature.h"
+#include "SpellAuraDefines.h"
 
 enum Spells
 {
@@ -42,47 +43,49 @@ enum Creatures
 
 struct boss_balinda : public ScriptedAI
 {
-    boss_balinda(Creature* creature) : ScriptedAI(creature), summons(me), _hasCastIceBlock(false)
-    {    }
+    boss_balinda(Creature* creature) : ScriptedAI(creature), summons(me), _iceBlockCount(0)
+    {
+        ApplyCasterImmunities(me);
+    }
 
     void Reset() override
     {
         summons.DespawnAll();
+        _iceBlockCount = 0;
+        ApplyCasterImmunities(me);
     }
 
     void JustEngagedWith(Unit* /*who*/) override
     {
-        _hasCastIceBlock = false;
+        _iceBlockCount = 0;
 
         Talk(SAY_AGGRO);
+        SummonWaterElemental();
 
-        ScheduleTimedEvent(3s, [&]
+        ScheduleTimedEvent(35s, [&]
         {
-            if (summons.empty())
-            {
-                DoCast(SPELL_SUMMON_WATER_ELEMENTAL);
-            }
-        }, 50s, 50s);
+            SummonWaterElemental();
+        }, 35s, 45s);
 
-        ScheduleTimedEvent(5s, 15s, [&]
+        ScheduleTimedEvent(5s, 10s, [&]
         {
-            DoCastAOE(SPELL_ARCANE_EXPLOSION);
-        }, 5s, 15s);
+            CastIfReady([&] { DoCastAOE(SPELL_ARCANE_EXPLOSION); });
+        }, 6s, 10s);
 
         ScheduleTimedEvent(8s, [&]
         {
-            DoCastVictim(SPELL_CONE_OF_COLD);
-        }, 10s, 20s);
+            CastIfReady([&] { DoCastVictim(SPELL_CONE_OF_COLD); });
+        }, 9s, 14s);
 
         ScheduleTimedEvent(1s, [&]
         {
-            DoCastVictim(SPELL_FIREBALL);
-        }, 5s, 9s);
+            CastAtEnemy(SPELL_FIREBALL);
+        }, 4s, 6s);
 
         ScheduleTimedEvent(4s, [&]
         {
-            DoCastVictim(SPELL_FROSTBOLT);
-        }, 4s, 12s);
+            CastAtEnemy(SPELL_FROSTBOLT);
+        }, 6s, 9s);
 
         ScheduleTimedEvent(5s, [&]
         {
@@ -105,18 +108,33 @@ struct boss_balinda : public ScriptedAI
 
     void JustSummoned(Creature* summoned) override
     {
-        summoned->AI()->AttackStart(SelectTarget(SelectTargetMethod::Random, 0, 50, true));
-        summoned->SetFaction(me->GetFaction());
-        summons.Summon(summoned);
+        if (summoned->GetEntry() == NPC_WATER_ELEMENTAL)
+        {
+            ConfigureWaterElemental(summoned);
+            summons.Summon(summoned);
+        }
     }
 
     void DamageTaken(Unit* /*attacker*/, uint32& damage, DamageEffectType /*type*/, SpellSchoolMask /*school*/) override
     {
-        if (me->HealthBelowPctDamaged(40, damage) && !_hasCastIceBlock)
+        if (_iceBlockCount == 0 && me->HealthBelowPctDamaged(65, damage))
         {
-            DoCast(SPELL_ICEBLOCK);
-            _hasCastIceBlock = true;
+            DoCastSelf(SPELL_ICEBLOCK);
+            damage = 0;
+            ++_iceBlockCount;
         }
+        else if (_iceBlockCount == 1 && me->HealthBelowPctDamaged(35, damage))
+        {
+            DoCastSelf(SPELL_ICEBLOCK);
+            damage = 0;
+            ++_iceBlockCount;
+        }
+    }
+
+    void DamageDealt(Unit* /*victim*/, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
+    {
+        if (damageType != DIRECT_DAMAGE && (damageSchoolMask & SPELL_SCHOOL_MASK_MAGIC))
+            damage *= 2;
     }
 
     void JustDied(Unit* /*killer*/) override
@@ -134,8 +152,72 @@ struct boss_balinda : public ScriptedAI
     }
 
 private:
+    static void ApplyCasterImmunities(Creature* creature)
+    {
+        creature->ApplySpellImmune(0, IMMUNITY_EFFECT, SPELL_EFFECT_INTERRUPT_CAST, true);
+        creature->ApplySpellImmune(0, IMMUNITY_MECHANIC, MECHANIC_INTERRUPT, true);
+        creature->ApplySpellImmune(0, IMMUNITY_MECHANIC, MECHANIC_SILENCE, true);
+        creature->ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_SILENCE, true);
+        creature->ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_PACIFY_SILENCE, true);
+        creature->ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_CASTING_SPEED_NOT_STACK, true);
+    }
+
+    static void ApplyCrowdControlImmunities(Creature* creature)
+    {
+        for (uint32 mechanic = MECHANIC_CHARM; mechanic < MAX_MECHANIC; ++mechanic)
+            if (IMMUNE_TO_MOVEMENT_IMPAIRMENT_AND_LOSS_CONTROL_MASK & (1ULL << mechanic))
+                creature->ApplySpellImmune(0, IMMUNITY_MECHANIC, mechanic, true);
+    }
+
+    template <typename Action>
+    void CastIfReady(Action&& action)
+    {
+        if (!me->HasUnitState(UNIT_STATE_CASTING))
+            action();
+    }
+
+    void CastAtEnemy(uint32 spellId)
+    {
+        CastIfReady([&]
+        {
+            if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 40.0f, true))
+                DoCast(target, spellId);
+            else
+                DoCastVictim(spellId);
+        });
+    }
+
+    void SummonWaterElemental()
+    {
+        if (!summons.empty())
+            return;
+
+        SpellCastResult result = DoCastSelf(SPELL_SUMMON_WATER_ELEMENTAL);
+        if (result == SPELL_CAST_OK && !summons.empty())
+            return;
+
+        if (Creature* elemental = DoSummon(NPC_WATER_ELEMENTAL, me, 4.0f, 45 * IN_MILLISECONDS, TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN))
+        {
+            if (summons.empty())
+            {
+                ConfigureWaterElemental(elemental);
+                summons.Summon(elemental);
+            }
+        }
+    }
+
+    void ConfigureWaterElemental(Creature* elemental)
+    {
+        elemental->SetLevel(me->GetLevel());
+        elemental->SetFaction(me->GetFaction());
+        ApplyCrowdControlImmunities(elemental);
+
+        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 50, true))
+            elemental->AI()->AttackStart(target);
+    }
+
     SummonList summons;
-    bool _hasCastIceBlock;
+    uint8 _iceBlockCount;
 };
 
 void AddSC_boss_balinda()

@@ -1869,6 +1869,8 @@ void AuraEffect::HandleSpiritOfRedemption(AuraApplication const* aurApp, uint8 m
     if (!target->IsPlayer())
         return;
 
+    bool delayedSpiritDeath = false;
+
     // prepare spirit state
     if (apply)
     {
@@ -1879,18 +1881,50 @@ void AuraEffect::HandleSpiritOfRedemption(AuraApplication const* aurApp, uint8 m
         if (!target->IsStandState())
             target->SetStandState(UNIT_STAND_STATE_STAND);
 
-        target->SetHealth(1);
+        target->SetFullHealth();
+        if (target->GetMaxPower(POWER_MANA) > 0)
+            target->SetPower(POWER_MANA, target->GetMaxPower(POWER_MANA));
     }
     // die at aura end
     else if (target->IsAlive())
-        // call functions which may have additional effects after chainging state of unit
-        target->setDeathState(DeathState::JustDied);
+    {
+        Player* player = target->ToPlayer();
+        if (target->GetShapeshiftForm() == FORM_SPIRITOFREDEMPTION)
+        {
+            target->SetShapeshiftForm(FORM_NONE);
+            target->RestoreDisplayId();
+            player->InitDataForForm();
+        }
+
+        target->SetHealth(1);
+        delayedSpiritDeath = true;
+
+        ObjectGuid targetGuid = target->GetGUID();
+        target->m_Events.AddEventAtOffset([targetGuid]
+        {
+            if (Player* delayedTarget = ObjectAccessor::FindPlayer(targetGuid))
+            {
+                if (!delayedTarget->IsAlive() || delayedTarget->HasSpiritOfRedemptionAura())
+                    return;
+
+                if (delayedTarget->GetShapeshiftForm() == FORM_SPIRITOFREDEMPTION)
+                {
+                    delayedTarget->SetShapeshiftForm(FORM_NONE);
+                    delayedTarget->RestoreDisplayId();
+                    delayedTarget->InitDataForForm();
+                }
+
+                delayedTarget->RemoveAurasDueToSpell(62371);
+                delayedTarget->setDeathState(DeathState::JustDied);
+            }
+        }, 250ms);
+    }
 
     // xinef: damage immunity spell, not needed because of 93 aura (adds non_attackable state)
     // xinef: probably blizzard added it just in case in wotlk (id > 46000)
     if (apply)
         target->CastSpell(target, 62371, true);
-    else
+    else if (!delayedSpiritDeath)
         target->RemoveAurasDueToSpell(62371);
 }
 

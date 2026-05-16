@@ -24,8 +24,13 @@
 #ifndef _ACORE_GEOMETRY_H
 #define _ACORE_GEOMETRY_H
 
+#include "Define.h"
 #include <cstdlib>
 #include <math.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 [[nodiscard]] inline float getAngle(float startX, float startY, float destX, float destY)
 {

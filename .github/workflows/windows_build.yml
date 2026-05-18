@@ -53,4 +53,6 @@ jobs:
         run: |
           cd C:/ac
           export CTOOLS_BUILD=all
+          export MTHREADS=2
+          export CMAKE_BUILD_PARALLEL_LEVEL=2
           ./acore.sh compiler build

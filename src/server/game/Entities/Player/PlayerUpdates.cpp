@@ -38,6 +38,7 @@
 #include "Vehicle.h"
 #include "Weather.h"
 #include "WeatherMgr.h"
+#include "WorldSession.h"
 #include "WorldState.h"
 #include "WorldStatePackets.h"
 
@@ -1602,6 +1603,17 @@ void Player::UpdateVisibilityForPlayer(bool mapChange)
     if (mapChange && m_seer != this)
         m_seer = this;
 
+    // Bot sessions do not have a real client, so maintaining their client-side
+    // object visibility list only burns map-update CPU. Real players still see
+    // bots through Unit::UpdateObjectVisibility(), which is kept by the caller.
+    if (WorldSession* session = GetSession(); session && session->IsBot())
+    {
+        if (mapChange)
+            m_last_notify_position.Relocate(-5000.0f, -5000.0f, -5000.0f, 0.0f);
+
+        return;
+    }
+
     Acore::VisibleNotifier notifier(*this, mapChange);
     Cell::VisitObjects(GetSightPosition().GetPositionX(), GetSightPosition().GetPositionY(), GetMap(), notifier, GetSightRange());
     Cell::VisitFarVisibleObjects(GetSightPosition().GetPositionX(), GetSightPosition().GetPositionY(), GetMap(), notifier, VISIBILITY_DISTANCE_GIGANTIC);
@@ -1677,6 +1689,9 @@ template <class T>
 void Player::UpdateVisibilityOf(T* target, UpdateData& data,
                                 std::vector<Unit*>& visibleNow)
 {
+    if (WorldSession* session = GetSession(); session && session->IsBot())
+        return;
+
     GetMap()->AddObjectToPendingUpdateList(target);
 
     if (HaveAtClient(target))
@@ -1712,6 +1727,9 @@ void Player::GetInitialVisiblePackets(Unit* target)
 
 void Player::UpdateVisibilityOf(WorldObject* target)
 {
+    if (WorldSession* session = GetSession(); session && session->IsBot())
+        return;
+
     if (HaveAtClient(target))
     {
         if (!CanSeeOrDetect(target, false, true))

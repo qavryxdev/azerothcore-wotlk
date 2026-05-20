@@ -51,6 +51,7 @@
 #include "Vehicle.h"
 #include "World.h"
 #include "WorldPacket.h"
+#include "WorldSession.h"
 
 /// @todo: this import is not necessary for compilation and marked as unused by the IDE
 //  however, for some reasons removing it would cause a damn linking issue
@@ -3035,7 +3036,14 @@ void WorldObject::AddToNotify(uint16 f)
             }
             else if (f & NOTIFY_AI_RELOCATION)
             {
-                u->m_delayed_unit_ai_notify_timer = u->FindMap() ? DynamicVisibilityMgr::GetAINotifyDelay(u->FindMap()->GetEntry()->map_type) : 500;
+                uint32 aiNotifyDelay = u->FindMap() ? DynamicVisibilityMgr::GetAINotifyDelay(u->FindMap()->GetEntry()->map_type) : 500;
+
+                if (Player* player = u->ToPlayer())
+                    if (WorldSession* session = player->GetSession(); session && session->IsBot() && !player->InBattleground() && !player->IsInCombat())
+                        if (aiNotifyDelay < 2000)
+                            aiNotifyDelay = 2000;
+
+                u->m_delayed_unit_ai_notify_timer = aiNotifyDelay;
             }
 
             m_notifyflags |= f;

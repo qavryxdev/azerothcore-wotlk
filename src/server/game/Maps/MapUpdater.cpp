@@ -22,6 +22,80 @@
 #include "Map.h"
 #include "MapMgr.h"
 #include "Metric.h"
+#include "Player.h"
+#include "WorldSession.h"
+
+#include <functional>
+#include <mutex>
+#include <thread>
+#include <unordered_map>
+
+namespace
+{
+    constexpr uint32 SLOW_MAP_UPDATE_LOG_MS = 25;
+    constexpr uint32 SLOW_MAP_UPDATE_LOG_THROTTLE_MS = 5000;
+
+    struct MapUpdatePlayerCounts
+    {
+        uint32 players = 0;
+        uint32 bots = 0;
+    };
+
+    MapUpdatePlayerCounts CountMapUpdatePlayers(Map const& map)
+    {
+        MapUpdatePlayerCounts counts;
+
+        for (Map::PlayerList::const_iterator itr = map.GetPlayers().begin(); itr != map.GetPlayers().end(); ++itr)
+        {
+            Player* player = itr->GetSource();
+            if (!player)
+                continue;
+
+            ++counts.players;
+
+            WorldSession* session = player->GetSession();
+            if (session && session->IsBot())
+                ++counts.bots;
+        }
+
+        return counts;
+    }
+
+    char const* GetMapUpdateType(Map const& map)
+    {
+        if (map.IsBattlegroundOrArena())
+            return "battleground";
+
+        if (map.IsDungeon())
+            return "dungeon";
+
+        if (map.Instanceable())
+            return "instanceable";
+
+        return "world";
+    }
+
+    bool ShouldLogSlowMapUpdate(Map const& map, uint32 elapsedMs)
+    {
+        if (elapsedMs < SLOW_MAP_UPDATE_LOG_MS)
+            return false;
+
+        static std::mutex logMutex;
+        static std::unordered_map<uint64, uint32> lastLogTimes;
+
+        uint64 const key = (uint64(map.GetId()) << 32) | map.GetInstanceId();
+        uint32 const now = getMSTime();
+
+        std::lock_guard<std::mutex> guard(logMutex);
+
+        auto itr = lastLogTimes.find(key);
+        if (itr != lastLogTimes.end() && getMSTimeDiff(itr->second, now) < SLOW_MAP_UPDATE_LOG_THROTTLE_MS)
+            return false;
+
+        lastLogTimes[key] = now;
+        return true;
+    }
+}
 
 class UpdateRequest
 {
@@ -43,7 +117,20 @@ public:
     void call() override
     {
         METRIC_TIMER("map_update_time_diff", METRIC_TAG("map_id", std::to_string(m_map.GetId())));
+
+        uint32 const startTime = getMSTime();
         m_map.Update(m_diff, s_diff);
+        uint32 const elapsedMs = GetMSTimeDiffToNow(startTime);
+
+        if (ShouldLogSlowMapUpdate(m_map, elapsedMs))
+        {
+            MapUpdatePlayerCounts const counts = CountMapUpdatePlayers(m_map);
+
+            LOG_WARN("server", "Slow map update: map={} instance={} name=\"{}\" type={} elapsed={}ms players={} bots={} diff={} sessionDiff={} worker={}",
+                m_map.GetId(), m_map.GetInstanceId(), m_map.GetMapName(), GetMapUpdateType(m_map), elapsedMs, counts.players,
+                counts.bots, m_diff, s_diff, std::hash<std::thread::id>{}(std::this_thread::get_id()));
+        }
+
         m_updater.update_finished();
     }
 

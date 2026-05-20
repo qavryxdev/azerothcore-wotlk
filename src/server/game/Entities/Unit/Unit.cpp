@@ -72,9 +72,42 @@
 #include "Vehicle.h"
 #include "World.h"
 #include "WorldPacket.h"
+#include "WorldSession.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
+
+namespace
+{
+    bool IsBotSession(Player const* player)
+    {
+        WorldSession* session = player ? player->GetSession() : nullptr;
+        return session && session->IsBot();
+    }
+
+    struct MovingBotVisibilityNotifier
+    {
+        explicit MovingBotVisibilityNotifier(Player& movingBot) : _movingBot(movingBot) { }
+
+        template<class T>
+        void Visit(GridRefMgr<T>&) { }
+
+        void Visit(PlayerMapType& players)
+        {
+            for (PlayerMapType::iterator iter = players.begin(); iter != players.end(); ++iter)
+            {
+                Player* player = iter->GetSource();
+                if (!player || player == &_movingBot || !player->IsInWorld() || IsBotSession(player))
+                    continue;
+
+                player->UpdateVisibilityOf(&_movingBot);
+            }
+        }
+
+    private:
+        Player& _movingBot;
+    };
+}
 
 float baseMoveSpeed[MAX_MOVE_TYPE] =
 {
@@ -16423,6 +16456,15 @@ void Unit::ExecuteDelayedUnitRelocationEvent()
         }
 
         GetMap()->LoadGridsInRange(*player, MAX_VISIBILITY_DISTANCE);
+
+        if (IsBotSession(player))
+        {
+            MovingBotVisibilityNotifier notifier(*player);
+            Cell::VisitObjects(player->GetSightPosition().GetPositionX(), player->GetSightPosition().GetPositionY(), player->GetMap(), notifier, player->GetSightRange());
+
+            this->AddToNotify(NOTIFY_AI_RELOCATION);
+            return;
+        }
 
         Acore::PlayerRelocationNotifier notifier(*player);
         Cell::VisitObjects(player->GetSightPosition().GetPositionX(), player->GetSightPosition().GetPositionY(), player->GetMap(), notifier, player->GetSightRange());

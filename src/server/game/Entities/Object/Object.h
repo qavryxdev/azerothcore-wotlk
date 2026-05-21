@@ -748,6 +748,7 @@ protected:
     bool _outdoors;
     LiquidData _liquidData;
     bool _updatePositionData;
+    uint32 _lastPositionDataUpdateMSTime;
 
     // transports
     Transport* m_transport;

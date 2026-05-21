@@ -1056,7 +1056,8 @@ void MovementInfo::OutDebug()
 
 WorldObject::WorldObject() : WorldLocation(),
     LastUsedScriptID(0), m_name(""), m_isActive(false), _visibilityDistanceOverrideType(VisibilityDistanceType::Normal), m_zoneScript(nullptr),
-    _zoneId(0), _areaId(0), _floorZ(INVALID_HEIGHT), _outdoors(false), _liquidData(), _updatePositionData(false), m_transport(nullptr),
+    _zoneId(0), _areaId(0), _floorZ(INVALID_HEIGHT), _outdoors(false), _liquidData(), _updatePositionData(false),
+    _lastPositionDataUpdateMSTime(0), m_transport(nullptr),
     m_currMap(nullptr), _heartbeatTimer(HEARTBEAT_INTERVAL), m_InstanceId(0), m_phaseMask(PHASEMASK_NORMAL), m_useCombinedPhases(true),
     m_notifyflags(0), m_executed_notifies(0), _objectVisibilityContainer(this)
 {
@@ -1179,7 +1180,23 @@ void WorldObject::SetPositionDataUpdate()
 
 void WorldObject::UpdatePositionData()
 {
+    bool const forcedUpdate = _updatePositionData;
     _updatePositionData = false;
+
+    if (!forcedUpdate)
+        if (Player* player = ToPlayer())
+            if (WorldSession* session = player->GetSession(); session && session->IsBot() && !player->InBattleground() &&
+                !player->IsInCombat() && !player->IsBeingTeleported() && !player->GetTransport())
+            {
+                uint32 const now = static_cast<uint32>(GameTime::GetGameTimeMS().count());
+                uint32 constexpr WORLD_BOT_POSITION_DATA_DELAY = 250;
+
+                if (_lastPositionDataUpdateMSTime &&
+                    getMSTimeDiff(_lastPositionDataUpdateMSTime, now) < WORLD_BOT_POSITION_DATA_DELAY)
+                    return;
+
+                _lastPositionDataUpdateMSTime = now;
+            }
 
     PositionFullTerrainStatus data;
     GetMap()->GetFullTerrainStatusForPosition(GetPhaseMask(), GetPositionX(), GetPositionY(), GetPositionZ(), GetCollisionHeight(), data);
@@ -3040,8 +3057,11 @@ void WorldObject::AddToNotify(uint16 f)
 
                 if (Player* player = u->ToPlayer())
                     if (WorldSession* session = player->GetSession(); session && session->IsBot() && !player->InBattleground() && !player->IsInCombat())
-                        if (aiNotifyDelay < 2000)
-                            aiNotifyDelay = 2000;
+                    {
+                        uint32 minWorldBotDelay = player->isMoving() ? 500 : 1500;
+                        if (aiNotifyDelay < minWorldBotDelay)
+                            aiNotifyDelay = minWorldBotDelay;
+                    }
 
                 u->m_delayed_unit_ai_notify_timer = aiNotifyDelay;
             }

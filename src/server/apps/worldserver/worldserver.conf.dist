@@ -687,10 +687,10 @@ LogSpamReports = 1
 #
 
 Appender.Console=1,4,0,"1 9 3 6 5 8"
-Appender.Server=2,5,0,Server.log,w
-Appender.Playerbots=2,5,0,Playerbots.log,w
+Appender.Server=2,5,0,Server.log,w,67108864
+Appender.Playerbots=2,5,0,Playerbots.log,w,67108864
 # Appender.GM=2,5,15,gm_%s.log
-Appender.Errors=2,2,0,Errors.log,w
+Appender.Errors=2,2,0,Errors.log,w,104857600
 # Appender.DB=3,5,0
 # Appender.Dev=2,5,0,Dev.log,a
 

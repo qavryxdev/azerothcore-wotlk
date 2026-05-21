@@ -16501,8 +16501,15 @@ void Unit::ExecuteDelayedUnitAINotifyEvent()
     if (!this->IsInWorld() || this->IsDuringRemoveFromWorld())
         return;
 
+    if (this->IsInFlight())
+        return;
+
     Acore::AIRelocationNotifier notifier(*this);
     float radius = 60.0f;
+    if (Player* player = this->ToPlayer())
+        if (IsBotSession(player) && !player->InBattleground() && !player->IsInCombat())
+            radius = 45.0f;
+
     Cell::VisitObjects(this, notifier, radius);
 }
 

@@ -41,6 +41,7 @@
 #include <bitset>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <shared_mutex>
 
@@ -524,11 +525,13 @@ public:
 
     void AddUpdateObject(Object* obj)
     {
+        std::lock_guard<std::mutex> lock(_updateObjectsLock);
         _updateObjects.insert(obj);
     }
 
     void RemoveUpdateObject(Object* obj)
     {
+        std::lock_guard<std::mutex> lock(_updateObjectsLock);
         _updateObjects.erase(obj);
     }
 
@@ -687,6 +690,7 @@ private:
     std::unordered_map<ObjectGuid, Corpse*> _corpsesByPlayer;
     std::unordered_set<Corpse*> _corpseBones;
 
+    std::mutex _updateObjectsLock;
     std::unordered_set<Object*> _updateObjects;
 
     UpdatableObjectList _updatableObjectList;

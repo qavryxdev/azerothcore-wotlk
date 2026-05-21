@@ -27,6 +27,16 @@
 #include "WorldModel.h"
 
 #include <G3D/Vector3.h>
+#include <unordered_map>
+
+namespace
+{
+struct ThreadLocalNavMeshQuery
+{
+    std::shared_ptr<dtNavMesh> navMesh;
+    MMAP::ManagedNavMeshQuery query;
+};
+}
 
 MapCollisionData::MapCollisionData(Map const& map, Map const* parentMap) :
     _map(map), _staticVMapData(map.GetId())
@@ -176,8 +186,17 @@ bool DynamicVMapCollisionData::GetObjectHitPos(uint32 phasemask, float x1, float
 
 dtNavMeshQuery const* MMapData::GetNavMeshQuery()
 {
-    if (_navMesh && !_navMeshQuery)
-        _navMeshQuery = MMAP::MMapMgr::CreateNavMeshQuery(_navMesh.get());
+    if (!_navMesh)
+        return nullptr;
 
-    return _navMeshQuery.get();
+    thread_local std::unordered_map<dtNavMesh const*, ThreadLocalNavMeshQuery> navMeshQueries;
+
+    ThreadLocalNavMeshQuery& cachedQuery = navMeshQueries[_navMesh.get()];
+    if (!cachedQuery.query)
+    {
+        cachedQuery.navMesh = _navMesh;
+        cachedQuery.query = MMAP::MMapMgr::CreateNavMeshQuery(_navMesh.get());
+    }
+
+    return cachedQuery.query.get();
 }

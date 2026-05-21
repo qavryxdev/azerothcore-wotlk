@@ -1701,12 +1701,20 @@ void Map::SendObjectUpdates()
 {
     UpdateDataMapType update_players;
 
-    while (!_updateObjects.empty())
+    while (true)
     {
-        Object* obj = *_updateObjects.begin();
+        Object* obj = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(_updateObjectsLock);
+            if (_updateObjects.empty())
+                break;
+
+            obj = *_updateObjects.begin();
+            _updateObjects.erase(_updateObjects.begin());
+        }
+
         ASSERT(obj->IsInWorld());
 
-        _updateObjects.erase(_updateObjects.begin());
         obj->BuildUpdate(update_players);
     }
 

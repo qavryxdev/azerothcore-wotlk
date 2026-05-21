@@ -65,7 +65,7 @@ public:
 protected:
     // _navMesh is a shared_ptr as it will point to a parent maps nav mesh (if exists) to save on memory
     std::shared_ptr<dtNavMesh> _navMesh;
-    // navMeshQuery is not thread safe and needs its own instance per map
+    // dtNavMeshQuery has mutable internal scratch buffers; GetNavMeshQuery returns a per-thread query.
     MMAP::ManagedNavMeshQuery _navMeshQuery;
 };
 

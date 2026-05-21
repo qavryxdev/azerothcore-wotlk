@@ -24,6 +24,26 @@
 #include "Map.h"
 #include "Metric.h"
 
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+
+namespace
+{
+std::mutex& GetNavMeshQueryMutex(dtNavMesh const* navMesh)
+{
+    static std::mutex mapLock;
+    static std::unordered_map<dtNavMesh const*, std::unique_ptr<std::mutex>> mutexes;
+
+    std::lock_guard<std::mutex> guard(mapLock);
+    std::unique_ptr<std::mutex>& mutex = mutexes[navMesh];
+    if (!mutex)
+        mutex = std::make_unique<std::mutex>();
+
+    return *mutex;
+}
+}
+
  ////////////////// PathGenerator //////////////////
 PathGenerator::PathGenerator(WorldObject const* owner) :
     _polyLength(0), _type(PATHFIND_BLANK), _useStraightPath(false), _forceDestination(false),
@@ -79,6 +99,8 @@ bool PathGenerator::CalculatePath(float x, float y, float z, float destX, float 
         _type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
         return true;
     }
+
+    std::unique_lock<std::mutex> navMeshQueryLock(GetNavMeshQueryMutex(_navMesh));
 
     UpdateFilter();
 

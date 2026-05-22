@@ -133,9 +133,9 @@ CharacterDatabaseInfo = "127.0.0.1;3306;acore;acore;acore_characters"
 #                     1 - (WorldDatabase.WorkerThreads)
 #                     1 - (CharacterDatabase.WorkerThreads)
 
-LoginDatabase.WorkerThreads     = 1
-WorldDatabase.WorkerThreads     = 1
-CharacterDatabase.WorkerThreads = 1
+LoginDatabase.WorkerThreads     = 3
+WorldDatabase.WorkerThreads     = 3
+CharacterDatabase.WorkerThreads = 3
 
 #
 #    LoginDatabase.SynchThreads
@@ -146,9 +146,9 @@ CharacterDatabase.WorkerThreads = 1
 #                     1 - (WorldDatabase.SynchThreads)
 #                     1 - (CharacterDatabase.SynchThreads)
 
-LoginDatabase.SynchThreads     = 1
-WorldDatabase.SynchThreads     = 1
-CharacterDatabase.SynchThreads = 1
+LoginDatabase.SynchThreads     = 4
+WorldDatabase.SynchThreads     = 4
+CharacterDatabase.SynchThreads = 4
 
 #
 #    MaxPingTime
@@ -261,7 +261,7 @@ PidFile = ""
 #        Default:     1 - (Enabled)
 #                     0 - (Disabled)
 
-Console.Enable = 1
+Console.Enable = 0
 
 #
 #    BeepAtStart
@@ -363,7 +363,7 @@ Updates.ExceptionShutdownDelay = 10000
 #        Description: Number of threads for network.
 #         Default:    1 - (Recommended 1 thread per 1000 connections)
 
-Network.Threads = 1
+Network.Threads = 2
 
 #
 #    Network.OutKBuff
@@ -504,7 +504,7 @@ TOTPMasterSecret =
 #                      - World socket networking
 #        Default:     2
 
-ThreadPool = 2
+ThreadPool = 4
 
 #
 #    UseProcessors
@@ -690,7 +690,7 @@ Appender.Console=1,4,0,"1 9 3 6 5 8"
 Appender.Server=2,5,0,Server.log,w,67108864
 Appender.Playerbots=2,5,0,Playerbots.log,w,67108864
 # Appender.GM=2,5,15,gm_%s.log
-Appender.Errors=2,2,0,Errors.log,w,104857600
+Appender.Errors=2,5,0,Errors.log,w,104857600
 # Appender.DB=3,5,0
 # Appender.Dev=2,5,0,Dev.log,a
 
@@ -1095,7 +1095,7 @@ EnableLoginAfterDC = 1
 #        Description: Minimum time (milliseconds) between world update ticks (for mostly idle servers).
 #        Default:     1 - (0.001 second)
 
-MinWorldUpdateTime = 1
+MinWorldUpdateTime = 10
 
 #
 #    UpdateUptimeInterval
@@ -1337,9 +1337,9 @@ Visibility.GroupMode = 1
 #                     170 - (Visibility.Distance.Instances)
 #                     250 - (Visibility.Distance.BGArenas)
 
-Visibility.Distance.Continents = 100
-Visibility.Distance.Instances = 170
-Visibility.Distance.BGArenas = 250
+Visibility.Distance.Continents = 110
+Visibility.Distance.Instances = 180
+Visibility.Distance.BGArenas = 280
 
 #
 #    Visibility.ObjectSparkles
@@ -1367,14 +1367,14 @@ Visibility.ObjectQuestMarkers = 1
 #        Description: Time (milliseconds) for map update interval.
 #        Default:     10 - (0.01 second)
 
-MapUpdateInterval = 10
+MapUpdateInterval = 100
 
 #
 #    MapUpdate.Threads
 #        Description: Number of threads to update maps.
 #        Default:     1
 
-MapUpdate.Threads = 1
+MapUpdate.Threads = 8
 
 #
 #    MoveMaps.Enable
@@ -1465,7 +1465,7 @@ PreloadAllNonInstancedMapGrids = 0
 #        Default:     0 - (cache paths, uses more memory)
 #                     1 - (don't cache, uses more cpu)
 
-DontCacheRandomMovementPaths = 0
+DontCacheRandomMovementPaths = 1
 
 #
 ###################################################################################################
@@ -3686,7 +3686,7 @@ Battleground.CastDeserter = 1
 #        Default:     0 - (Disabled)
 #                     1 - (Enabled)
 
-Battleground.QueueAnnouncer.Enable = 0
+Battleground.QueueAnnouncer.Enable = 1
 
 #
 #    Battleground.QueueAnnouncer.Limit.MinLevel

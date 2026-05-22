@@ -520,6 +520,7 @@ public:
     inline ObjectGuid::LowType GenerateLowGuid()
     {
         static_assert(ObjectGuidTraits<high>::MapSpecific, "Only map specific guid can be generated in Map context");
+        std::lock_guard<std::mutex> lock(_guidGeneratorsLock);
         return GetGuidSequenceGenerator<high>().Generate();
     }
 
@@ -682,6 +683,7 @@ private:
         return *itr->second;
     }
 
+    std::mutex _guidGeneratorsLock;
     std::map<HighGuid, std::unique_ptr<ObjectGuidGeneratorBase>> _guidGenerators;
     MapStoredObjectTypesContainer _objectsStore;
     CreatureBySpawnIdContainer _creatureBySpawnIdStore;

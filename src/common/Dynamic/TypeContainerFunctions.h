@@ -25,9 +25,111 @@
  */
 
 #include "Dynamic/TypeList.h"
+#include "Log.h"
+
+#include <sstream>
+#include <string>
+#include <type_traits>
+#include <typeinfo>
+#include <utility>
 
 namespace Acore
 {
+    namespace Detail
+    {
+        template<class T, class = void>
+        struct HasToString : std::false_type { };
+
+        template<class T>
+        struct HasToString<T, std::void_t<decltype(std::declval<T const&>().ToString())>> : std::true_type { };
+
+        template<class T, class = void>
+        struct IsStreamable : std::false_type { };
+
+        template<class T>
+        struct IsStreamable<T, std::void_t<decltype(std::declval<std::ostream&>() << std::declval<T const&>())>>
+            : std::true_type { };
+
+        template<class T, class = void>
+        struct HasGetGUID : std::false_type { };
+
+        template<class T>
+        struct HasGetGUID<T, std::void_t<decltype(std::declval<T const*>()->GetGUID())>> : std::true_type { };
+
+        template<class T, class = void>
+        struct HasGetEntry : std::false_type { };
+
+        template<class T>
+        struct HasGetEntry<T, std::void_t<decltype(std::declval<T const*>()->GetEntry())>> : std::true_type { };
+
+        template<class T, class = void>
+        struct HasGetMapId : std::false_type { };
+
+        template<class T>
+        struct HasGetMapId<T, std::void_t<decltype(std::declval<T const*>()->GetMapId())>> : std::true_type { };
+
+        template<class T, class = void>
+        struct HasIsInWorld : std::false_type { };
+
+        template<class T>
+        struct HasIsInWorld<T, std::void_t<decltype(std::declval<T const*>()->IsInWorld())>> : std::true_type { };
+
+        template<class T, class = void>
+        struct HasPosition : std::false_type { };
+
+        template<class T>
+        struct HasPosition<T, std::void_t<decltype(std::declval<T const*>()->GetPositionX()),
+                                          decltype(std::declval<T const*>()->GetPositionY()),
+                                          decltype(std::declval<T const*>()->GetPositionZ())>> : std::true_type { };
+
+        template<class T>
+        std::string FormatTypeContainerValue(T const& value)
+        {
+            if constexpr (HasToString<T>::value)
+            {
+                return value.ToString();
+            }
+            else if constexpr (IsStreamable<T>::value)
+            {
+                std::ostringstream out;
+                out << value;
+                return out.str();
+            }
+            else
+            {
+                return "<unprintable>";
+            }
+        }
+
+        template<class T>
+        std::string FormatTypeContainerObject(T const* obj)
+        {
+            std::ostringstream out;
+            out << "ptr=" << static_cast<void const*>(obj);
+
+            if (!obj)
+                return out.str();
+
+            if constexpr (HasGetGUID<T>::value)
+                out << " guid=" << FormatTypeContainerValue(obj->GetGUID());
+
+            if constexpr (HasGetEntry<T>::value)
+                out << " entry=" << obj->GetEntry();
+
+            if constexpr (HasGetMapId<T>::value)
+                out << " map=" << obj->GetMapId();
+
+            if constexpr (HasIsInWorld<T>::value)
+                out << " inWorld=" << obj->IsInWorld();
+
+            if constexpr (HasPosition<T>::value)
+                out << " pos=(" << obj->GetPositionX() << ", " << obj->GetPositionY() << ", "
+                    << obj->GetPositionZ() << ")";
+
+            return out.str();
+        }
+    }
+
     // Helpers
     // Insert helpers
     template<class SPECIFIC_TYPE, class KEY_TYPE>
@@ -41,6 +143,17 @@ namespace Acore
         }
         else
         {
+            if (i->second != obj)
+            {
+                LOG_ERROR("entities.object",
+                          "TypeMapContainer duplicate key collision before ASSERT: objectType={} keyType={} key={} "
+                          "existing=[{}] incoming=[{}] containerSize={}",
+                          typeid(SPECIFIC_TYPE).name(), typeid(KEY_TYPE).name(),
+                          Detail::FormatTypeContainerValue(handle),
+                          Detail::FormatTypeContainerObject(i->second),
+                          Detail::FormatTypeContainerObject(obj), elements._element.size());
+            }
+
             ASSERT(i->second == obj, "Object with certain key already in but objects are different!");
             return false;
         }

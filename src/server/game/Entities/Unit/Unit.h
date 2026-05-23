@@ -1689,6 +1689,7 @@ public:
     void _RegisterDynObject(DynamicObject* dynObj);
     void _UnregisterDynObject(DynamicObject* dynObj);
     DynamicObject* GetDynObject(uint32 spellId);
+    [[nodiscard]] bool HasDynObject(DynamicObject const* dynObj) const;
     bool RemoveDynObject(uint32 spellId);
     void RemoveAllDynObjects();
 

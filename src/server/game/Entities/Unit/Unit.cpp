@@ -6557,6 +6557,15 @@ DynamicObject* Unit::GetDynObject(uint32 spellId)
     return nullptr;
 }
 
+bool Unit::HasDynObject(DynamicObject const* dynObj) const
+{
+    for (DynamicObject* ownedDynObj : m_dynObj)
+        if (ownedDynObj == dynObj)
+            return true;
+
+    return false;
+}
+
 bool Unit::RemoveDynObject(uint32 spellId)
 {
     if (m_dynObj.empty())
@@ -8368,6 +8377,16 @@ void Unit::UnsummonAllTotems(bool onDeath /*= false*/)
                     OldTotem->ToTempSummon()->UnSummon();
                 }
             }
+            else
+            {
+                if (i >= SUMMON_SLOT_TOTEM_FIRE && i < MAX_TOTEM_SLOT)
+                    m_SummonSlot[i].Clear();
+            }
+        }
+        else
+        {
+            if (i >= SUMMON_SLOT_TOTEM_FIRE && i < MAX_TOTEM_SLOT)
+                m_SummonSlot[i].Clear();
         }
     }
 }

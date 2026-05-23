@@ -134,8 +134,14 @@ bool DynamicObject::CreateDynamicObject(ObjectGuid::LowType guidlow, Unit* caste
 void DynamicObject::Update(uint32 p_time)
 {
     // caster has to be always available and in the same map
-    ASSERT(_caster);
-    ASSERT(_caster->GetMap() == GetMap());
+    Unit* caster = ObjectAccessor::GetUnit(*this, GetCasterGUID());
+    if (!caster || caster->GetMap() != GetMap() || !caster->HasDynObject(this))
+    {
+        Remove();
+        return;
+    }
+
+    _caster = caster;
 
     bool expired = false;
 
@@ -166,7 +172,7 @@ void DynamicObject::Update(uint32 p_time)
             {
                 _updateViewerVisibilityTimer = 0;
 
-                if (Player* playerCaster = _caster->ToPlayer())
+                if (Player* playerCaster = caster->ToPlayer())
                     playerCaster->UpdateVisibilityForPlayer();
             }
             else
@@ -268,8 +274,9 @@ void DynamicObject::BindToCaster()
 
 void DynamicObject::UnbindFromCaster()
 {
-    ASSERT(_caster);
-    _caster->_UnregisterDynObject(this);
+    if (Unit* caster = ObjectAccessor::GetUnit(*this, GetCasterGUID()))
+        caster->_UnregisterDynObject(this);
+
     _caster = nullptr;
 }
 

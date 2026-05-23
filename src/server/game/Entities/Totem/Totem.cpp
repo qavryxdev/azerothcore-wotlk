@@ -41,6 +41,16 @@ void Totem::Update(uint32 time)
         return;
     }
 
+    if (m_Properties && m_Properties->Type == SUMMON_TYPE_TOTEM)
+    {
+        uint32 slot = m_Properties->Slot;
+        if (slot >= SUMMON_SLOT_TOTEM_FIRE && slot < MAX_TOTEM_SLOT && owner->m_SummonSlot[slot] != GetGUID())
+        {
+            UnSummon();
+            return;
+        }
+    }
+
     // If owner is dead and this is not a lightwell, despawn
     if (!owner->IsAlive() && !(m_Properties && m_Properties->Type == SUMMON_TYPE_LIGHTWELL))
     {

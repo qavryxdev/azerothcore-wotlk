@@ -1873,7 +1873,10 @@ void Spell::EffectPersistentAA(SpellEffIndex effIndex)
             m_spellAura->_RegisterForTargets();
         }
         else
+        {
+            dynObj->Remove();
             return;
+        }
     }
 
     ASSERT(m_spellAura->GetDynobjOwner());

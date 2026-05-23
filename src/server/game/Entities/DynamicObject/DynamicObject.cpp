@@ -285,5 +285,8 @@ bool DynamicObject::IsUpdateNeeded()
     if (GetByteValue(DYNAMICOBJECT_BYTES, 0) == DYNAMIC_OBJECT_AREA_SPELL)
         return true;
 
+    if (GetByteValue(DYNAMICOBJECT_BYTES, 0) == DYNAMIC_OBJECT_FARSIGHT_FOCUS)
+        return true;
+
     return WorldObject::IsUpdateNeeded();
 }

@@ -4108,6 +4108,12 @@ void Unit::_UpdateAutoRepeatSpell()
 
     static uint32 const HUNTER_AUTOSHOOT = 75;
 
+    if (HasUnitState(UNIT_STATE_CANNOT_AUTOATTACK) || HasUnitFlag(UNIT_FLAG_PACIFIED))
+    {
+        m_AutoRepeatFirstCast = true;
+        return;
+    }
+
     // Check "realtime" interrupts
     if ((IsPlayer() && ToPlayer()->isMoving() && spellProto->Id != HUNTER_AUTOSHOOT) || IsNonMeleeSpellCast(false, false, true, spellProto->Id == HUNTER_AUTOSHOOT))
     {

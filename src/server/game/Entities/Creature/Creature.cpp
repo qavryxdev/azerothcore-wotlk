@@ -877,7 +877,9 @@ void Creature::Update(uint32 diff)
                 }
             }
 
-            if (!IsInEvadeMode() && IsAIEnabled)
+            bool const isControlledForCombatAI =
+                HasUnitState(UNIT_STATE_CONTROLLED) || IsPolymorphed() || HasPacifyAura() || HasPacifySilenceAura();
+            if (!isControlledForCombatAI && !IsInEvadeMode() && IsAIEnabled)
             {
                 // do not allow the AI to be changed during update
                 m_AI_locked = true;

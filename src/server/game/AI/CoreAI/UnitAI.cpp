@@ -39,7 +39,7 @@ void UnitAI::AttackStartCaster(Unit* victim, float dist)
 
 void UnitAI::DoMeleeAttackIfReady()
 {
-    if (me->HasUnitState(UNIT_STATE_CASTING))
+    if (me->HasUnitState(UNIT_STATE_CANNOT_AUTOATTACK) || me->HasUnitFlag(UNIT_FLAG_PACIFIED))
         return;
 
     Unit* victim = me->GetVictim();
@@ -74,7 +74,7 @@ void UnitAI::DoMeleeAttackIfReady()
 
 bool UnitAI::DoSpellAttackIfReady(uint32 spell)
 {
-    if (me->HasUnitState(UNIT_STATE_CASTING) || !me->isAttackReady())
+    if (me->HasUnitState(UNIT_STATE_CANNOT_AUTOATTACK) || me->HasUnitFlag(UNIT_FLAG_PACIFIED) || !me->isAttackReady())
         return true;
 
     if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spell))
@@ -92,7 +92,7 @@ bool UnitAI::DoSpellAttackIfReady(uint32 spell)
 
 void UnitAI::DoSpellAttackToRandomTargetIfReady(uint32 spell, uint32 threatTablePosition /*= 0*/, float dist /*= 0.f*/, bool playerOnly /*= true*/)
 {
-    if (me->HasUnitState(UNIT_STATE_CASTING) || !me->isAttackReady())
+    if (me->HasUnitState(UNIT_STATE_CANNOT_AUTOATTACK) || me->HasUnitFlag(UNIT_FLAG_PACIFIED) || !me->isAttackReady())
         return;
 
     if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spell))

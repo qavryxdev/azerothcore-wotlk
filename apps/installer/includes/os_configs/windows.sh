@@ -28,6 +28,9 @@ else
 fi
 
 choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  cmake.install -y --installargs 'ADD_CMAKE_TO_PATH=System'
-choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  openssl --force --version=3.6.2
+# Deliberately unpinned. This package downloads its installer from slproweb, which publishes only the
+# current patch release and deletes the previous one, so a pinned version is guaranteed to 404 as soon
+# as they ship the next - which is exactly how this broke: Win64OpenSSL-3_6_2.exe stopped existing.
+choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  openssl --force
 choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  boost-msvc-14.3 --force --version=1.87.0
 choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  mysql --force --version=8.4.9

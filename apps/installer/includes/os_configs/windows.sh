@@ -33,4 +33,7 @@ choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  cmake.install -y --insta
 # as they ship the next - which is exactly how this broke: Win64OpenSSL-3_6_2.exe stopped existing.
 choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  openssl --force
 choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  boost-msvc-14.3 --force --version=1.87.0
-choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  mysql --force --version=8.4.9
+# Unpinned for the same reason as openssl above: the pinned 8.4.9 stopped being offered by the
+# package source ("mysql not installed. The package was not found with the source(s) listed") and a
+# version that the source has dropped is not a pin, it is a scheduled failure.
+choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  mysql --force

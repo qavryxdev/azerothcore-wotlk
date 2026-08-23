@@ -42,7 +42,11 @@ jobs:
       - name: Checkout Playerbot Module
         uses: actions/checkout@v3
         with:
-          repository: mod-playerbots/mod-playerbots
+          # This fork's own module, not the upstream one. Building our core against a module that moves
+          # independently only proves whether two unrelated versions happen to line up on the day - it
+          # broke here on a header the upstream module had started to need and this core does not have.
+          # The combination worth testing is the one that gets deployed.
+          repository: qavryxdev/mod-playerbots
           # Map AC branch → PB branch
           ref: ${{ github.ref_name == 'Playerbot' && 'master' || 'test-staging' }}
           path: modules/mod-playerbots

@@ -34,7 +34,8 @@ jobs:
       - name: Checkout Playerbot Module
         uses: actions/checkout@v4
         with:
-          repository: mod-playerbots/mod-playerbots
+          # This fork's own module - see core-build-playerbots.yml for why.
+          repository: qavryxdev/mod-playerbots
           ref: ${{ github.ref_name == 'Playerbot' && 'master' || 'test-staging' }}
           path: modules/mod-playerbots
 

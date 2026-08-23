@@ -411,6 +411,7 @@ public:
     [[nodiscard]] time_t GetLinkedRespawnTime(ObjectGuid guid) const;
     [[nodiscard]] time_t GetCreatureRespawnTime(ObjectGuid::LowType dbGuid) const
     {
+        std::lock_guard<std::mutex> lock(_respawnLock);
         std::unordered_map<ObjectGuid::LowType /*dbGUID*/, time_t>::const_iterator itr = _creatureRespawnTimes.find(dbGuid);
         if (itr != _creatureRespawnTimes.end())
             return itr->second;
@@ -420,6 +421,7 @@ public:
 
     [[nodiscard]] time_t GetGORespawnTime(ObjectGuid::LowType dbGuid) const
     {
+        std::lock_guard<std::mutex> lock(_respawnLock);
         std::unordered_map<ObjectGuid::LowType /*dbGUID*/, time_t>::const_iterator itr = _goRespawnTimes.find(dbGuid);
         if (itr != _goRespawnTimes.end())
             return itr->second;
@@ -431,8 +433,18 @@ public:
     void RemoveCreatureRespawnTime(ObjectGuid::LowType dbGuid);
     void SaveGORespawnTime(ObjectGuid::LowType dbGuid, time_t& respawnTime);
     void RemoveGORespawnTime(ObjectGuid::LowType dbGuid);
-    [[nodiscard]] std::unordered_map<ObjectGuid::LowType, time_t> const& GetCreatureRespawnTimes() const { return _creatureRespawnTimes; }
-    [[nodiscard]] std::unordered_map<ObjectGuid::LowType, time_t> const& GetGORespawnTimes() const { return _goRespawnTimes; }
+    // Copies rather than references: the only callers are chat commands that iterate them, and a
+    // reference would be walked while a bot on another thread schedules a respawn.
+    [[nodiscard]] std::unordered_map<ObjectGuid::LowType, time_t> GetCreatureRespawnTimes() const
+    {
+        std::lock_guard<std::mutex> lock(_respawnLock);
+        return _creatureRespawnTimes;
+    }
+    [[nodiscard]] std::unordered_map<ObjectGuid::LowType, time_t> GetGORespawnTimes() const
+    {
+        std::lock_guard<std::mutex> lock(_respawnLock);
+        return _goRespawnTimes;
+    }
     void LoadRespawnTimes();
     void DeleteRespawnTimes();
     [[nodiscard]] time_t GetInstanceResetPeriod() const { return _instanceResetPeriod; }
@@ -494,7 +506,9 @@ public:
     void SendRemoveTransports(Player* player);
     void SendZoneDynamicInfo(uint32 zoneId, Player* player) const;
     void SendZoneWeather(uint32 zoneId, Player* player) const;
-    void SendZoneWeather(ZoneDynamicInfo const& zoneDynamicInfo, Player* player) const;
+    // Takes the values rather than a ZoneDynamicInfo reference: the caller reads them out of the map
+    // under _zoneDynamicInfoLock and sends afterwards, so no reference into the container escapes.
+    void SendZoneWeather(WeatherState weatherId, float weatherGrade, Weather* defaultWeather, Player* player) const;
     void SendInitSelf(Player* player);
 
     void UpdateWeather(uint32 const diff);
@@ -559,10 +573,11 @@ public:
     void RemoveWorldObjectFromFarVisibleMap(WorldObject* obj);
     void AddWorldObjectToZoneWideVisibleMap(uint32 zoneId, WorldObject* obj);
     void RemoveWorldObjectFromZoneWideVisibleMap(uint32 zoneId, WorldObject* obj);
-    ZoneWideVisibleWorldObjectsSet const* GetZoneWideVisibleWorldObjectsForZone(uint32 zoneId) const;
+    ZoneWideVisibleWorldObjectsSet GetZoneWideVisibleWorldObjectsForZone(uint32 zoneId) const;
 
     [[nodiscard]] uint32 GetPlayerCountInZone(uint32 zoneId) const
     {
+        std::lock_guard<std::mutex> lock(_zonePlayerCountLock);
         if (auto const& it = _zonePlayerCountMap.find(zoneId); it != _zonePlayerCountMap.end())
             return it->second;
 
@@ -664,13 +679,20 @@ private:
             return spawnId < other.spawnId;
         }
     };
+    // Respawn bookkeeping and the spawn group toggles are mutated together and are reached off the map
+    // update thread - a bot killing a creature schedules its respawn - so they share one lock. As with
+    // the corpse containers, it is held only around the container operations, never across the database
+    // work that follows them.
+    mutable std::mutex _respawnLock;
     std::set<RespawnEntry> _respawnQueue;
 
     std::unordered_set<uint32> _toggledSpawnGroupIds;
     uint32 _respawnCheckTimer{0};
 
+    mutable std::mutex _zonePlayerCountLock;
     std::unordered_map<uint32, uint32> _zonePlayerCountMap;
 
+    mutable std::mutex _zoneDynamicInfoLock;
     ZoneDynamicInfoMap _zoneDynamicInfo;
     IntervalTimer _weatherUpdateTimer;
     uint32 _defaultLight;
@@ -707,9 +729,14 @@ private:
     std::mutex _updateObjectsLock;
     std::unordered_set<Object*> _updateObjects;
 
+    // _updatableObjectList itself needs no lock: it is only ever touched by the map update thread, from
+    // the drain below and from grid unloading. The pending set is the one that is filled from wherever
+    // an object becomes updatable, which includes bot AI on a worker thread.
     UpdatableObjectList _updatableObjectList;
+    mutable std::mutex _pendingUpdatableObjectLock;
     PendingAddUpdatableObjectList _pendingAddUpdatableObjectList;
     IntervalTimer _updatableObjectListRecheckTimer;
+    mutable std::mutex _zoneWideVisibleLock;
     ZoneWideVisibleWorldObjectsMap _zoneWideVisibleWorldObjectsMap;
 };
 

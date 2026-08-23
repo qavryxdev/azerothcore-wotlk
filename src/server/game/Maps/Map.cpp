@@ -416,6 +416,8 @@ void Map::UpdatePlayerZoneStats(uint32 oldZone, uint32 newZone)
     if (oldZone == newZone)
         return;
 
+    std::lock_guard<std::mutex> lock(_zonePlayerCountLock);
+
     if (oldZone != MAP_INVALID_ZONE)
     {
         uint32& oldZoneCount = _zonePlayerCountMap[oldZone];
@@ -531,9 +533,17 @@ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
 
 void Map::UpdateNonPlayerObjects(uint32 const diff)
 {
-    for (WorldObject* obj : _pendingAddUpdatableObjectList)
+    // Drained under the lock into a local: the objects themselves are only ever added to
+    // _updatableObjectList by this thread, but the pending set is filled from wherever an object
+    // becomes updatable, which includes bot AI on a worker thread.
+    PendingAddUpdatableObjectList pendingAdd;
+    {
+        std::lock_guard<std::mutex> lock(_pendingUpdatableObjectLock);
+        pendingAdd.swap(_pendingAddUpdatableObjectList);
+    }
+
+    for (WorldObject* obj : pendingAdd)
         _AddObjectToUpdateList(obj);
-    _pendingAddUpdatableObjectList.clear();
 
     if (_updatableObjectListRecheckTimer.Passed())
     {
@@ -581,7 +591,11 @@ void Map::AddObjectToPendingUpdateList(WorldObject* obj)
     if (!mapUpdatableObject || mapUpdatableObject->GetUpdateState() != UpdatableMapObject::UpdateState::NotUpdating)
         return;
 
-    _pendingAddUpdatableObjectList.insert(obj);
+    {
+        std::lock_guard<std::mutex> lock(_pendingUpdatableObjectLock);
+        _pendingAddUpdatableObjectList.insert(obj);
+    }
+
     mapUpdatableObject->SetUpdateState(UpdatableMapObject::UpdateState::PendingAdd);
 }
 
@@ -619,7 +633,10 @@ void Map::RemoveObjectFromMapUpdateList(WorldObject* obj)
 
     UpdatableMapObject* mapUpdatableObject = dynamic_cast<UpdatableMapObject*>(obj);
     if (mapUpdatableObject->GetUpdateState() == UpdatableMapObject::UpdateState::PendingAdd)
+    {
+        std::lock_guard<std::mutex> lock(_pendingUpdatableObjectLock);
         _pendingAddUpdatableObjectList.erase(obj);
+    }
     else if (mapUpdatableObject->GetUpdateState() == UpdatableMapObject::UpdateState::Updating)
         _RemoveObjectFromUpdateList(obj);
 }
@@ -666,11 +683,13 @@ void Map::RemoveWorldObjectFromFarVisibleMap(WorldObject* obj)
 // Used in VisibilityDistanceType::Infinite
 void Map::AddWorldObjectToZoneWideVisibleMap(uint32 zoneId, WorldObject* obj)
 {
+    std::lock_guard<std::mutex> lock(_zoneWideVisibleLock);
     _zoneWideVisibleWorldObjectsMap[zoneId].insert(obj);
 }
 
 void Map::RemoveWorldObjectFromZoneWideVisibleMap(uint32 zoneId, WorldObject* obj)
 {
+    std::lock_guard<std::mutex> lock(_zoneWideVisibleLock);
     ZoneWideVisibleWorldObjectsMap::iterator itr = _zoneWideVisibleWorldObjectsMap.find(zoneId);
     if (itr == _zoneWideVisibleWorldObjectsMap.end())
         return;
@@ -678,13 +697,16 @@ void Map::RemoveWorldObjectFromZoneWideVisibleMap(uint32 zoneId, WorldObject* ob
     itr->second.erase(obj);
 }
 
-ZoneWideVisibleWorldObjectsSet const* Map::GetZoneWideVisibleWorldObjectsForZone(uint32 zoneId) const
+// A copy, because the caller runs a visibility pass over it and the set can gain or lose an entry
+// while that runs.
+ZoneWideVisibleWorldObjectsSet Map::GetZoneWideVisibleWorldObjectsForZone(uint32 zoneId) const
 {
+    std::lock_guard<std::mutex> lock(_zoneWideVisibleLock);
     ZoneWideVisibleWorldObjectsMap::const_iterator itr = _zoneWideVisibleWorldObjectsMap.find(zoneId);
     if (itr == _zoneWideVisibleWorldObjectsMap.end())
-        return nullptr;
+        return {};
 
-    return &itr->second;
+    return itr->second;
 }
 
 void Map::HandleDelayedVisibility()
@@ -1759,10 +1781,15 @@ uint32 Map::ApplyDynamicModeRespawnScaling(WorldObject const* obj, uint32 respaw
             || (creature->GetCreatureTemplate()->rank == CREATURE_ELITE_RAREELITE))
             return respawnDelay;
 
-    auto it = _zonePlayerCountMap.find(obj->GetZoneId());
-    if (it == _zonePlayerCountMap.end())
-        return respawnDelay;
-    uint32 const playerCount = it->second;
+    uint32 playerCount = 0;
+    {
+        std::lock_guard<std::mutex> lock(_zonePlayerCountLock);
+        auto it = _zonePlayerCountMap.find(obj->GetZoneId());
+        if (it == _zonePlayerCountMap.end())
+            return respawnDelay;
+
+        playerCount = it->second;
+    }
     if (!playerCount)
         return respawnDelay;
     double const adjustFactor =  rate / playerCount;
@@ -2414,13 +2441,17 @@ void Map::SaveCreatureRespawnTime(ObjectGuid::LowType spawnId, time_t& respawnTi
     if (GetInstanceResetPeriod() > 0 && respawnTime - now + 5 >= GetInstanceResetPeriod())
         respawnTime = now + YEAR;
 
-    // Remove old queue entry if updating an existing respawn time
-    auto itr = _creatureRespawnTimes.find(spawnId);
-    if (itr != _creatureRespawnTimes.end())
-        _respawnQueue.erase({itr->second, SPAWN_TYPE_CREATURE, spawnId});
+    {
+        std::lock_guard<std::mutex> lock(_respawnLock);
 
-    _creatureRespawnTimes[spawnId] = respawnTime;
-    _respawnQueue.insert({respawnTime, SPAWN_TYPE_CREATURE, spawnId});
+        // Remove old queue entry if updating an existing respawn time
+        auto itr = _creatureRespawnTimes.find(spawnId);
+        if (itr != _creatureRespawnTimes.end())
+            _respawnQueue.erase({itr->second, SPAWN_TYPE_CREATURE, spawnId});
+
+        _creatureRespawnTimes[spawnId] = respawnTime;
+        _respawnQueue.insert({respawnTime, SPAWN_TYPE_CREATURE, spawnId});
+    }
 
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_CREATURE_RESPAWN);
     stmt->SetData(0, spawnId);
@@ -2432,11 +2463,14 @@ void Map::SaveCreatureRespawnTime(ObjectGuid::LowType spawnId, time_t& respawnTi
 
 void Map::RemoveCreatureRespawnTime(ObjectGuid::LowType spawnId)
 {
-    auto itr = _creatureRespawnTimes.find(spawnId);
-    if (itr != _creatureRespawnTimes.end())
     {
-        _respawnQueue.erase({itr->second, SPAWN_TYPE_CREATURE, spawnId});
-        _creatureRespawnTimes.erase(itr);
+        std::lock_guard<std::mutex> lock(_respawnLock);
+        auto itr = _creatureRespawnTimes.find(spawnId);
+        if (itr != _creatureRespawnTimes.end())
+        {
+            _respawnQueue.erase({itr->second, SPAWN_TYPE_CREATURE, spawnId});
+            _creatureRespawnTimes.erase(itr);
+        }
     }
 
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_CREATURE_RESPAWN);
@@ -2459,13 +2493,17 @@ void Map::SaveGORespawnTime(ObjectGuid::LowType spawnId, time_t& respawnTime)
     if (GetInstanceResetPeriod() > 0 && respawnTime - now + 5 >= GetInstanceResetPeriod())
         respawnTime = now + YEAR;
 
-    // Remove old queue entry if updating an existing respawn time
-    auto itr = _goRespawnTimes.find(spawnId);
-    if (itr != _goRespawnTimes.end())
-        _respawnQueue.erase({itr->second, SPAWN_TYPE_GAMEOBJECT, spawnId});
+    {
+        std::lock_guard<std::mutex> lock(_respawnLock);
 
-    _goRespawnTimes[spawnId] = respawnTime;
-    _respawnQueue.insert({respawnTime, SPAWN_TYPE_GAMEOBJECT, spawnId});
+        // Remove old queue entry if updating an existing respawn time
+        auto itr = _goRespawnTimes.find(spawnId);
+        if (itr != _goRespawnTimes.end())
+            _respawnQueue.erase({itr->second, SPAWN_TYPE_GAMEOBJECT, spawnId});
+
+        _goRespawnTimes[spawnId] = respawnTime;
+        _respawnQueue.insert({respawnTime, SPAWN_TYPE_GAMEOBJECT, spawnId});
+    }
 
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_GO_RESPAWN);
     stmt->SetData(0, spawnId);
@@ -2477,11 +2515,14 @@ void Map::SaveGORespawnTime(ObjectGuid::LowType spawnId, time_t& respawnTime)
 
 void Map::RemoveGORespawnTime(ObjectGuid::LowType spawnId)
 {
-    auto itr = _goRespawnTimes.find(spawnId);
-    if (itr != _goRespawnTimes.end())
     {
-        _respawnQueue.erase({itr->second, SPAWN_TYPE_GAMEOBJECT, spawnId});
-        _goRespawnTimes.erase(itr);
+        std::lock_guard<std::mutex> lock(_respawnLock);
+        auto itr = _goRespawnTimes.find(spawnId);
+        if (itr != _goRespawnTimes.end())
+        {
+            _respawnQueue.erase({itr->second, SPAWN_TYPE_GAMEOBJECT, spawnId});
+            _goRespawnTimes.erase(itr);
+        }
     }
 
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_GO_RESPAWN);
@@ -2504,6 +2545,7 @@ void Map::LoadRespawnTimes()
             ObjectGuid::LowType lowguid = fields[0].Get<uint32>();
             time_t respawnTime = time_t(fields[1].Get<uint32>());
 
+            std::lock_guard<std::mutex> lock(_respawnLock);
             _creatureRespawnTimes[lowguid] = respawnTime;
             _respawnQueue.insert({respawnTime, SPAWN_TYPE_CREATURE, lowguid});
         } while (result->NextRow());
@@ -2520,6 +2562,7 @@ void Map::LoadRespawnTimes()
             ObjectGuid::LowType lowguid = fields[0].Get<uint32>();
             time_t respawnTime = time_t(fields[1].Get<uint32>());
 
+            std::lock_guard<std::mutex> lock(_respawnLock);
             _goRespawnTimes[lowguid] = respawnTime;
             _respawnQueue.insert({respawnTime, SPAWN_TYPE_GAMEOBJECT, lowguid});
         } while (result->NextRow());
@@ -2528,9 +2571,12 @@ void Map::LoadRespawnTimes()
 
 void Map::DeleteRespawnTimes()
 {
-    _creatureRespawnTimes.clear();
-    _goRespawnTimes.clear();
-    _respawnQueue.clear();
+    {
+        std::lock_guard<std::mutex> lock(_respawnLock);
+        _creatureRespawnTimes.clear();
+        _goRespawnTimes.clear();
+        _respawnQueue.clear();
+    }
 
     DeleteRespawnTimesInDB(GetId(), GetInstanceId());
 }
@@ -2561,7 +2607,12 @@ bool Map::IsSpawnGroupActive(uint32 groupId) const
     // Per-map toggled state: XOR with default.
     // MANUAL_SPAWN groups default to inactive; toggling makes them active.
     // Non-MANUAL groups default to active; toggling makes them inactive.
-    bool toggled = _toggledSpawnGroupIds.count(groupId) != 0;
+    bool toggled;
+    {
+        std::lock_guard<std::mutex> lock(_respawnLock);
+        toggled = _toggledSpawnGroupIds.count(groupId) != 0;
+    }
+
     bool defaultActive = !(data->flags & SPAWNGROUP_FLAG_MANUAL_SPAWN);
     return toggled != defaultActive; // XOR: toggled flips the default
 }
@@ -2583,10 +2634,13 @@ bool Map::SpawnGroupSpawn(uint32 groupId, bool ignoreRespawn /*= false*/, bool f
     }
 
     // Mark group as active on this map (toggle to active state)
-    if (groupData->flags & SPAWNGROUP_FLAG_MANUAL_SPAWN)
-        _toggledSpawnGroupIds.insert(groupId);
-    else
-        _toggledSpawnGroupIds.erase(groupId);
+    {
+        std::lock_guard<std::mutex> lock(_respawnLock);
+        if (groupData->flags & SPAWNGROUP_FLAG_MANUAL_SPAWN)
+            _toggledSpawnGroupIds.insert(groupId);
+        else
+            _toggledSpawnGroupIds.erase(groupId);
+    }
 
     auto range = sObjectMgr->GetSpawnDataForGroup(groupId);
     for (auto it = range.first; it != range.second; ++it)
@@ -2667,10 +2721,13 @@ bool Map::SpawnGroupDespawn(uint32 groupId, bool deleteRespawnTimes /*= false*/)
     }
 
     // Mark group as inactive on this map (toggle to inactive state)
-    if (groupData->flags & SPAWNGROUP_FLAG_MANUAL_SPAWN)
-        _toggledSpawnGroupIds.erase(groupId);
-    else
-        _toggledSpawnGroupIds.insert(groupId);
+    {
+        std::lock_guard<std::mutex> lock(_respawnLock);
+        if (groupData->flags & SPAWNGROUP_FLAG_MANUAL_SPAWN)
+            _toggledSpawnGroupIds.erase(groupId);
+        else
+            _toggledSpawnGroupIds.insert(groupId);
+    }
 
     std::vector<WorldObject*> toUnload;
     auto range = sObjectMgr->GetSpawnDataForGroup(groupId);
@@ -2715,18 +2772,27 @@ void Map::ProcessRespawns()
 
     // Process due respawns from the time-ordered queue.
     // Entries are sorted by respawnTime — once we hit a future time, we're done.
-    while (!_respawnQueue.empty())
+    while (true)
     {
-        auto it = _respawnQueue.begin();
-        if (it->respawnTime > now)
-            break; // nothing else is due this tick
+        SpawnObjectType type;
+        ObjectGuid::LowType spawnId;
 
-        SpawnObjectType type = it->type;
-        ObjectGuid::LowType spawnId = it->spawnId;
+        // Popped under the lock and handled outside it: the handlers below call Remove*RespawnTime(),
+        // which takes the same lock, so holding it here would deadlock.
+        {
+            std::lock_guard<std::mutex> lock(_respawnLock);
+            if (_respawnQueue.empty())
+                break;
 
-        // Remove from queue first — handlers below call Remove*RespawnTime()
-        // which also erases from queue, so we must pop before processing.
-        _respawnQueue.erase(it);
+            auto it = _respawnQueue.begin();
+            if (it->respawnTime > now)
+                break; // nothing else is due this tick
+
+            type = it->type;
+            spawnId = it->spawnId;
+
+            _respawnQueue.erase(it);
+        }
 
         if (type == SPAWN_TYPE_CREATURE)
             ProcessCreatureRespawn(spawnId);
@@ -3142,43 +3208,71 @@ void Map::SendZoneText(uint32 zoneId, char const* text, WorldSession const* self
 
 void Map::SendZoneDynamicInfo(uint32 zoneId, Player* player) const
 {
-    ZoneDynamicInfoMap::const_iterator itr = _zoneDynamicInfo.find(zoneId);
-    if (itr == _zoneDynamicInfo.end())
-        return;
+    // The scalars are copied out under the lock and the packets are built afterwards, so the lock never
+    // spans a send. DefaultWeather is only ever replaced by UpdateWeather on the map update thread.
+    uint32 music = 0;
+    uint32 overrideLight = 0;
+    uint32 lightFadeInTime = 0;
+    WeatherState weatherId;
+    float weatherGrade = 0.0f;
+    Weather* defaultWeather = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(_zoneDynamicInfoLock);
+        ZoneDynamicInfoMap::const_iterator itr = _zoneDynamicInfo.find(zoneId);
+        if (itr == _zoneDynamicInfo.end())
+            return;
 
-    if (uint32 music = itr->second.MusicId)
+        music = itr->second.MusicId;
+        overrideLight = itr->second.OverrideLightId;
+        lightFadeInTime = itr->second.LightFadeInTime;
+        weatherId = itr->second.WeatherId;
+        weatherGrade = itr->second.WeatherGrade;
+        defaultWeather = itr->second.DefaultWeather.get();
+    }
+
+    if (music)
         player->SendDirectMessage(WorldPackets::Misc::PlayMusic(music).Write());
 
-    SendZoneWeather(itr->second, player);
+    SendZoneWeather(weatherId, weatherGrade, defaultWeather, player);
 
-    if (uint32 overrideLight = itr->second.OverrideLightId)
+    if (overrideLight)
     {
         WorldPacket data(SMSG_OVERRIDE_LIGHT, 4 + 4 + 4);
         data << uint32(_defaultLight);
         data << uint32(overrideLight);
-        data << uint32(itr->second.LightFadeInTime);
+        data << uint32(lightFadeInTime);
         player->SendDirectMessage(&data);
     }
 }
 
 void Map::SendZoneWeather(uint32 zoneId, Player* player) const
 {
-    ZoneDynamicInfoMap::const_iterator itr = _zoneDynamicInfo.find(zoneId);
-    if (itr == _zoneDynamicInfo.end())
-        return;
+    WeatherState weatherId;
+    float weatherGrade = 0.0f;
+    Weather* defaultWeather = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(_zoneDynamicInfoLock);
+        ZoneDynamicInfoMap::const_iterator itr = _zoneDynamicInfo.find(zoneId);
+        if (itr == _zoneDynamicInfo.end())
+            return;
 
-    SendZoneWeather(itr->second, player);
+        weatherId = itr->second.WeatherId;
+        weatherGrade = itr->second.WeatherGrade;
+        defaultWeather = itr->second.DefaultWeather.get();
+    }
+
+    SendZoneWeather(weatherId, weatherGrade, defaultWeather, player);
 }
 
-void Map::SendZoneWeather(ZoneDynamicInfo const& zoneDynamicInfo, Player* player) const
+void Map::SendZoneWeather(WeatherState weatherId, float weatherGrade, Weather* defaultWeather, Player* player) const
 {
-    if (WeatherState weatherId = zoneDynamicInfo.WeatherId)
+    if (weatherId)
     {
-        WorldPackets::Misc::Weather weather(weatherId, zoneDynamicInfo.WeatherGrade);
+        WorldPackets::Misc::Weather weather(weatherId, weatherGrade);
         player->SendDirectMessage(weather.Write());
     }
-    else if (zoneDynamicInfo.DefaultWeather)
-        zoneDynamicInfo.DefaultWeather->SendWeatherUpdateToPlayer(player);
+    else if (defaultWeather)
+        defaultWeather->SendWeatherUpdateToPlayer(player);
     else
         Weather::SendFineWeatherUpdateToPlayer(player);
 }
@@ -3189,6 +3283,7 @@ void Map::UpdateWeather(uint32 const diff)
     if (!_weatherUpdateTimer.Passed())
         return;
 
+    std::lock_guard<std::mutex> lock(_zoneDynamicInfoLock);
     for (auto&& zoneInfo : _zoneDynamicInfo)
         if (zoneInfo.second.DefaultWeather && !zoneInfo.second.DefaultWeather->Update(_weatherUpdateTimer.GetInterval()))
             zoneInfo.second.DefaultWeather.reset();
@@ -3213,7 +3308,10 @@ void Map::PlayDirectSoundToMap(uint32 soundId, uint32 zoneId)
 
 void Map::SetZoneMusic(uint32 zoneId, uint32 musicId)
 {
-    _zoneDynamicInfo[zoneId].MusicId = musicId;
+    {
+        std::lock_guard<std::mutex> lock(_zoneDynamicInfoLock);
+        _zoneDynamicInfo[zoneId].MusicId = musicId;
+    }
 
     WorldPackets::Misc::PlayMusic playMusic(musicId);
     SendZoneMessage(zoneId, WorldPackets::Misc::PlayMusic(musicId).Write());
@@ -3225,6 +3323,7 @@ Weather* Map::GetOrGenerateZoneDefaultWeather(uint32 zoneId)
     if (!weatherData)
         return nullptr;
 
+    std::lock_guard<std::mutex> lock(_zoneDynamicInfoLock);
     ZoneDynamicInfo& info = _zoneDynamicInfo[zoneId];
 
     if (!info.DefaultWeather)
@@ -3239,18 +3338,24 @@ Weather* Map::GetOrGenerateZoneDefaultWeather(uint32 zoneId)
 
 void Map::SetZoneWeather(uint32 zoneId, WeatherState weatherId, float weatherGrade)
 {
-    ZoneDynamicInfo& info = _zoneDynamicInfo[zoneId];
-    info.WeatherId = weatherId;
-    info.WeatherGrade = weatherGrade;
+    {
+        std::lock_guard<std::mutex> lock(_zoneDynamicInfoLock);
+        ZoneDynamicInfo& info = _zoneDynamicInfo[zoneId];
+        info.WeatherId = weatherId;
+        info.WeatherGrade = weatherGrade;
+    }
 
     SendZoneMessage(zoneId, WorldPackets::Misc::Weather(weatherId, weatherGrade).Write());
 }
 
 void Map::SetZoneOverrideLight(uint32 zoneId, uint32 lightId, Milliseconds fadeInTime)
 {
-    ZoneDynamicInfo& info = _zoneDynamicInfo[zoneId];
-    info.OverrideLightId = lightId;
-    info.LightFadeInTime = static_cast<uint32>(fadeInTime.count());
+    {
+        std::lock_guard<std::mutex> lock(_zoneDynamicInfoLock);
+        ZoneDynamicInfo& info = _zoneDynamicInfo[zoneId];
+        info.OverrideLightId = lightId;
+        info.LightFadeInTime = static_cast<uint32>(fadeInTime.count());
+    }
 
     WorldPacket data(SMSG_OVERRIDE_LIGHT, 4 + 4 + 4);
     data << uint32(_defaultLight);

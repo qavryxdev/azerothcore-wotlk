@@ -64,7 +64,23 @@ jobs:
             -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
             -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install \
             -S ${{ github.workspace }}
 
       - name: Build
         run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+
+      # Only one matrix entry publishes. The three differ by compiler, not by what they produce, and
+      # artifact storage is a shared quota - three copies of the same server buys nothing.
+      - name: Install
+        if: matrix.os == 'ubuntu-24.04' && matrix.cpp_compiler == 'g++'
+        run: cmake --install ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+
+      - name: Publish binaries
+        if: matrix.os == 'ubuntu-24.04' && matrix.cpp_compiler == 'g++'
+        uses: actions/upload-artifact@v4
+        with:
+          name: azerothcore-playerbots-linux
+          path: ${{ github.workspace }}/install
+          retention-days: 7
+          if-no-files-found: error

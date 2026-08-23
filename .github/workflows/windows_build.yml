@@ -57,3 +57,12 @@ jobs:
           export MTHREADS=2
           export CMAKE_BUILD_PARALLEL_LEVEL=2
           ./acore.sh compiler build
+
+      # acore.sh already installs into env/dist, so this is the finished server: bin, etc and lib.
+      - name: Publish binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: azerothcore-playerbots-windows
+          path: C:/ac/env/dist
+          retention-days: 7
+          if-no-files-found: error

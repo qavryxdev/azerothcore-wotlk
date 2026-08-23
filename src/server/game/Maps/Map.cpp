@@ -1067,7 +1067,16 @@ void Map::UnloadAll()
 
     _transports.clear();
 
-    for (auto& cellCorpsePair : _corpsesByGrid)
+    // Detach the containers under the lock, then destroy outside it - RemoveFromWorld touches the map.
+    std::unordered_map<uint32, std::unordered_set<Corpse*>> corpsesByGrid;
+    {
+        std::lock_guard<std::mutex> lock(_corpseLock);
+        corpsesByGrid.swap(_corpsesByGrid);
+        _corpsesByPlayer.clear();
+        _corpseBones.clear();
+    }
+
+    for (auto& cellCorpsePair : corpsesByGrid)
     {
         for (Corpse* corpse : cellCorpsePair.second)
         {
@@ -1076,10 +1085,6 @@ void Map::UnloadAll()
             delete corpse;
         }
     }
-
-    _corpsesByGrid.clear();
-    _corpsesByPlayer.clear();
-    _corpseBones.clear();
 }
 
 std::shared_ptr<GridTerrainData> Map::GetGridTerrainDataSharedPtr(GridCoord const& gridCoord)
@@ -2977,6 +2982,8 @@ void Map::AddCorpse(Corpse* corpse)
     corpse->SetMap(this);
 
     GridCoord const gridCoord = Acore::ComputeGridCoord(corpse->GetPositionX(), corpse->GetPositionY());
+
+    std::lock_guard<std::mutex> lock(_corpseLock);
     _corpsesByGrid[gridCoord.GetId()].insert(corpse);
     if (corpse->GetType() != CORPSE_BONES)
         _corpsesByPlayer[corpse->GetOwnerGUID()] = corpse;
@@ -2998,6 +3005,7 @@ void Map::RemoveCorpse(Corpse* corpse)
         corpse->ResetMap();
     }
 
+    std::lock_guard<std::mutex> lock(_corpseLock);
     _corpsesByGrid[gridCoord.GetId()].erase(corpse);
     if (corpse->GetType() != CORPSE_BONES)
         _corpsesByPlayer.erase(corpse->GetOwnerGUID());
@@ -3063,19 +3071,27 @@ void Map::RemoveOldCorpses()
     time_t now = GameTime::GetGameTime().count();
 
     std::vector<ObjectGuid> corpses;
-    corpses.reserve(_corpsesByPlayer.size());
+    std::vector<Corpse*> expiredBones;
 
-    for (auto const& p : _corpsesByPlayer)
-        if (p.second->IsExpired(now))
-            corpses.push_back(p.first);
+    // Snapshot under the lock, then act without it: ConvertCorpseToBones and RemoveCorpse take the same
+    // lock themselves, and both do database and world work that must not run inside a held lock.
+    {
+        std::lock_guard<std::mutex> lock(_corpseLock);
 
+        corpses.reserve(_corpsesByPlayer.size());
+        for (auto const& p : _corpsesByPlayer)
+            if (p.second->IsExpired(now))
+                corpses.push_back(p.first);
+
+        for (Corpse* bones : _corpseBones)
+            if (bones->IsExpired(now))
+                expiredBones.push_back(bones);
+    }
+
+    // Looked up by owner guid again inside, so an entry another thread removed in the meantime simply
+    // resolves to nothing.
     for (ObjectGuid const& ownerGuid : corpses)
         ConvertCorpseToBones(ownerGuid);
-
-    std::vector<Corpse*> expiredBones;
-    for (Corpse* bones : _corpseBones)
-        if (bones->IsExpired(now))
-            expiredBones.push_back(bones);
 
     for (Corpse* bones : expiredBones)
     {

@@ -358,17 +358,21 @@ public:
     typedef std::unordered_multimap<ObjectGuid::LowType, GameObject*> GameObjectBySpawnIdContainer;
     GameObjectBySpawnIdContainer& GetGameObjectBySpawnIdStore() { return _gameobjectBySpawnIdStore; }
 
-    [[nodiscard]] std::unordered_set<Corpse*> const* GetCorpsesInGrid(uint32 gridId) const
+    // Returns a copy rather than a pointer into the container: the caller iterates it while adding the
+    // corpses to the grid, and holding _corpseLock across that would put world updates inside the lock.
+    [[nodiscard]] std::unordered_set<Corpse*> GetCorpsesInGrid(uint32 gridId) const
     {
+        std::lock_guard<std::mutex> lock(_corpseLock);
         auto itr = _corpsesByGrid.find(gridId);
         if (itr != _corpsesByGrid.end())
-            return &itr->second;
+            return itr->second;
 
-        return nullptr;
+        return {};
     }
 
     [[nodiscard]] Corpse* GetCorpseByPlayer(ObjectGuid const& ownerGuid) const
     {
+        std::lock_guard<std::mutex> lock(_corpseLock);
         auto itr = _corpsesByPlayer.find(ownerGuid);
         if (itr != _corpsesByPlayer.end())
             return itr->second;
@@ -688,6 +692,14 @@ private:
     MapStoredObjectTypesContainer _objectsStore;
     CreatureBySpawnIdContainer _creatureBySpawnIdStore;
     GameObjectBySpawnIdContainer _gameobjectBySpawnIdStore;
+    // These three are reached from player-facing code (Player::CreateCorpse, Player::RemoveCorpse,
+    // Player::SpawnCorpseBones) as well as from Map::Update's own corpse expiry, so they are no longer
+    // touched by the map update thread alone once bot AI runs on a worker pool. An unsynchronised
+    // erase racing the expiry scan corrupted the element count of _corpsesByPlayer, size() underflowed
+    // to (size_t)-1 and RemoveOldCorpses aborted the process on reserve().
+    // The lock covers the container operations only - never a world update, a grid change or database
+    // work - so it cannot invert against the locks those take.
+    mutable std::mutex _corpseLock;
     std::unordered_map<uint32/*gridId*/, std::unordered_set<Corpse*>> _corpsesByGrid;
     std::unordered_map<ObjectGuid, Corpse*> _corpsesByPlayer;
     std::unordered_set<Corpse*> _corpseBones;

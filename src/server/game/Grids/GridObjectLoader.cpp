@@ -110,15 +110,12 @@ void GridObjectLoader::LoadAllCellsInGrid()
     LoadGameObjects(cell_guids.gameobjects, _map);
     LoadCreatures(cell_guids.creatures, _map);
 
-    if (std::unordered_set<Corpse*> const* corpses = _map->GetCorpsesInGrid(_grid.GetId()))
+    for (Corpse* corpse : _map->GetCorpsesInGrid(_grid.GetId()))
     {
-        for (Corpse* corpse : *corpses)
-        {
-            if (corpse->IsInGrid())
-                continue;
+        if (corpse->IsInGrid())
+            continue;
 
-            AddObjectHelper<Corpse>(_map, corpse);
-        }
+        AddObjectHelper<Corpse>(_map, corpse);
     }
 }
 

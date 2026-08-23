@@ -20,10 +20,14 @@ else
     }
 
     choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  git visualstudio2022community
+    # Only needed alongside the Visual Studio we just installed. The CI runner image already ships
+    # 2022 with the desktop C++ workload, and the chocolatey package cannot attach itself to that
+    # installation - it exits non-zero, which took the whole step down before openssl, boost and
+    # mysql were installed and left the build with no dependencies at all.
+    choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  visualstudio2022-workload-nativedesktop
 fi
 
 choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  cmake.install -y --installargs 'ADD_CMAKE_TO_PATH=System'
-choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  visualstudio2022-workload-nativedesktop
 choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  openssl --force --version=3.6.2
 choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  boost-msvc-14.3 --force --version=1.87.0
 choco install -y --skip-checksums "${INSTALL_ARGS[@]}"  mysql --force --version=8.4.9
